@@ -147,6 +147,32 @@
             config.gateway.mode = "local";
           };
 
+          # ── Mission Control dashboard (poort 3333) ─────────────
+          # Next.js dashboard voor live monitoring van agents, sessies en taken.
+          # Verbindt via WebSocket met de gateway op 127.0.0.1:18789.
+          systemd.services.openclaw-dashboard = {
+            description = "Openclaw Mission Control Dashboard";
+            after       = [ "network.target" "openclaw-gateway.service" ];
+            wantedBy    = [ "multi-user.target" ];
+            environment = {
+              GATEWAY_URL = "ws://127.0.0.1:18789";
+              NODE_ENV    = "production";
+            };
+            serviceConfig = {
+              User             = "agent";
+              WorkingDirectory = "/home/agent/workspace/dashboard";
+              # Bouw eerst, start daarna — output gaat naar systemd journal
+              ExecStartPre     = "${pkgs.nodejs_20}/bin/npm run build";
+              ExecStart        = "${pkgs.nodejs_20}/bin/npm run start";
+              Restart          = "on-failure";
+              RestartSec       = "5s";
+              StandardOutput   = "journal";
+              StandardError    = "journal";
+              SyslogIdentifier = "openclaw-dashboard";
+              EnvironmentFile  = "/home/agent/workspace/.env";
+            };
+          };
+
           # ── Multi-agent pipeline ────────────────────────────────
           # Writer, researcher en editor worden als interne agents
           # beheerd door de coordinator — geconfigureerd via
