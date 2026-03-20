@@ -375,26 +375,25 @@ Het dashboard staat in `~/workspace/dashboard/` (gedeeld via virtiofs).
 cat > ~/openclaw-workspace/dashboard/.env.local << 'EOF'
 GATEWAY_URL=ws://127.0.0.1:18789
 GATEWAY_TOKEN=af21006010193b74f53fae1550ea72e6685d497880f4e9c2
-TASKS_API_URL=http://127.0.0.1:3334
 EOF
 ```
 
 > Vervang `GATEWAY_TOKEN` met de waarde uit `gateway.auth.token` in `openclaw.json`.
 
-**In de VM** — start het dashboard:
-```bash
-cd ~/workspace/dashboard
-npm install
-npm run dev
-# Dashboard beschikbaar op http://10.0.1.2:3333 (host-netwerk)
-```
-
-**Firewall openen** (éénmalig in de VM, vervalt bij reboot):
+**Firewall** — poort 3333 staat al open via `networking.firewall.allowedTCPPorts` in `flake.nix`. Na een `nix build` + herstart is dit automatisch actief. Tijdelijk zonder rebuild:
 ```bash
 sudo iptables -I INPUT -p tcp --dport 3333 -j ACCEPT
 ```
 
-Voor permanente firewall-configuratie: voeg de poort toe via `flake.nix` in de `networking.firewall.allowedTCPPorts` lijst.
+**Starten als achtergrondservice** — het dashboard start automatisch via systemd. Na `nix build` + VM-herstart is het beschikbaar op `http://10.0.1.2:3333` zonder verdere stappen.
+
+Status en logs bekijken:
+```bash
+sudo systemctl status openclaw-dashboard
+sudo journalctl -u openclaw-dashboard -f
+```
+
+> **Let op:** de systemd-service draait `npm run build` bij elke (her)start. Dit duurt ~15-20 seconden. Het dashboard is pas beschikbaar nadat de build klaar is.
 
 ### Gateway WebSocket protocol
 
@@ -480,14 +479,15 @@ Zonder dit krijg je: `bufferutil.mask is not a function`.
 
 ### Tasks API
 
-De tasks worden beheerd door een aparte Express API die in de VM draait op poort 3334. De coordinator leest periodiek taken uit deze API en voert ze uit.
+Taken worden opgeslagen in een lokaal JSON-bestand in de workspace:
 
-```bash
-# Status tasks API
-curl http://10.0.1.2:3334/tasks
+```
+/home/agent/workspace/.openclaw/tasks.json
 ```
 
-Taken die je aanmaakt via het dashboard-formulier verschijnen in de coordinator's wachtrij. De coordinator pakt ze op, spawnt de juiste subagent (researcher/writer/editor), en updatet de status.
+Het dashboard leest en schrijft dit bestand rechtstreeks via de Next.js API routes (`/api/tasks`). Er is geen aparte server nodig. Het bestand is persistent via virtiofs en overleeft VM-reboots.
+
+> **Opmerking:** `tasks.list` bestaat niet als gateway-methode. Pogingen om taken via de gateway op te halen resulteren in `unknown method: tasks.list`. De file-based aanpak is de juiste oplossing.
 
 ---
 
@@ -658,6 +658,16 @@ De gateway returnt objecten, geen arrays:
 
 De `Array.isArray()` check in page.tsx geeft `[]` terug als de API een object returnt.
 
+### Dashboard systemd-service: `spawn sh ENOENT` bij opstarten
+
+`npm run build` faalt direct omdat systemd-services in NixOS een minimale `PATH` krijgen zonder `/bin/sh`. `npm` roept intern `sh` aan om scripts te starten.
+
+Oplossing: voeg `path = [ pkgs.bash pkgs.nodejs_20 pkgs.coreutils ]` toe aan de service-definitie in `flake.nix`. Dit zet de benodigde binaries in de service-PATH.
+
+### Dashboard: `tasks.list` geeft `unknown method`
+
+De gateway heeft geen `tasks.list` methode. Taken worden opgeslagen in een lokaal JSON-bestand (`/home/agent/workspace/.openclaw/tasks.json`), niet via de gateway. Zie **Tasks API** hierboven.
+
 ### Dashboard bereikbaar maar poort 3333 geblokkeerd na reboot
 
 De VM firewall staat standaard geen extra poorten toe. Na elke reboot:
@@ -665,7 +675,7 @@ De VM firewall staat standaard geen extra poorten toe. Na elke reboot:
 sudo iptables -I INPUT -p tcp --dport 3333 -j ACCEPT
 ```
 
-Voor permanente toegang: voeg `3333` toe aan `networking.firewall.allowedTCPPorts` in `flake.nix`.
+Voor permanente toegang: voeg `3333` toe aan `networking.firewall.allowedTCPPorts` in `flake.nix` (staat er al in na de laatste rebuild).
 
 ### Gateway bereikbaar via ws://127.0.0.1:18789 maar NIET via ws://10.0.1.2:18789
 
