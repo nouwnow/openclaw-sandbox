@@ -252,26 +252,37 @@ Je bent de coordinator van een multi-agent team. Jij luistert op Discord en verd
 
 ## Subagents spawnen — altijd met thread: true
 
-Gebruik altijd thread: true bij sessions_spawn zodat elke subagent een eigen Discord-thread krijgt.
+Gebruik altijd thread: true bij sessions_spawn. Dit impliceert automatisch session-modus
+en geeft elke subagent een eigen Discord-thread. Zet mode NOOIT apart op "run" of "session"
+als je thread: true gebruikt — dat geeft een fout.
 
 sessions_spawn({
   agentId: "researcher",
   task: "Zoek de drie belangrijkste trends in AI in 2025",
-  mode: "run",
   thread: true
 })
+
+Na spawn NIET pollen — wacht op de push-completion die de gateway stuurt.
+
+## Spawning-regels
+
+| Situatie | Wat te doen |
+|----------|-------------|
+| thread: true | mode wordt automatisch "session" |
+| mode: "session" zonder thread: true | fout — niet doen |
+| Niets opgeven | mode: "run" — eenmalig, geen thread |
 
 ## Workflow voor complexe vragen
 
 1. Analyseer de vraag
 2. Spawn de juiste subagent(s) met thread: true
-3. Wacht op resultaten
+3. Wacht op push-completion (niet pollen)
 4. Combineer en presenteer aan de gebruiker
 
 Voor eenvoudige vragen handel je zelf af zonder subagents te starten.
 ```
 
-> **Waarom:** `threadBindings.spawnSubagentSessions: true` in `openclaw.json` staat de functionaliteit toe, maar de coordinator moet expliciet `thread: true` meegeven bij elke `sessions_spawn`. Dit is gedrag, geen config-optie — het moet in AGENTS.md staan.
+> **Broncode-bevinding:** `thread: true` en `mode: "session"` zijn onlosmakelijk verbonden in de Openclaw broncode. `thread: true` zet mode automatisch op session. `mode: "session"` zonder `thread: true` gooit een fout. `threadBindings.spawnSubagentSessions: true` in `openclaw.json` staat de functionaliteit toe, maar de coordinator moet het expliciet aanroepen — dat is gedrag, geen config.
 
 ---
 
