@@ -368,8 +368,10 @@ openclaw-sandbox/
 ├── .claude.json               # Claude Code session (symlinked into VM)
 ├── .env                       # Secrets: Discord token, config paths
 ├── .openclaw/                 # Openclaw gateway state
-│   └── agents/main/agent/
-│       └── auth-profiles.json # Anthropic OAuth token (required for AI responses)
+│   ├── agents/main/agent/
+│   │   └── auth-profiles.json # Anthropic OAuth token (required for AI responses)
+│   └── workspace/
+│       └── AGENTS.md          # Coordinator instructions: always use thread: true
 ├── .openclaw-bundled-plugins/ # Plugin overlay (74 plugins, workaround for Nix)
 └── content/                   # Agent output — files written by the pipeline
 ```

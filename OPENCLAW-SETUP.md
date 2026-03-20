@@ -227,6 +227,54 @@ cat /home/agent/workspace/.openclaw-bundled-plugins/discord/openclaw.plugin.json
 
 ---
 
+## Stap 5b — Coordinator AGENTS.md aanmaken
+
+De coordinator weet standaard niet dat hij `thread: true` moet meegeven bij subagent spawning. Zonder dit krijgt elke subagent geen eigen Discord-thread en zie je de voortgang niet live.
+
+```bash
+mkdir -p /home/agent/workspace/.openclaw/workspace
+```
+
+Maak aan: `/home/agent/workspace/.openclaw/workspace/AGENTS.md`
+
+```markdown
+# AGENTS.md — Coordinator
+
+Je bent de coordinator van een multi-agent team. Jij luistert op Discord en verdeelt werk over gespecialiseerde subagents.
+
+## Jouw team
+
+| Agent | Specialisatie |
+|-------|---------------|
+| writer | Teksten schrijven, content, brieven, samenvattingen |
+| researcher | Informatie opzoeken, analyseren, feiten checken |
+| editor | Teksten redigeren, verbeteren, consistent maken |
+
+## Subagents spawnen — altijd met thread: true
+
+Gebruik altijd thread: true bij sessions_spawn zodat elke subagent een eigen Discord-thread krijgt.
+
+sessions_spawn({
+  agentId: "researcher",
+  task: "Zoek de drie belangrijkste trends in AI in 2025",
+  mode: "run",
+  thread: true
+})
+
+## Workflow voor complexe vragen
+
+1. Analyseer de vraag
+2. Spawn de juiste subagent(s) met thread: true
+3. Wacht op resultaten
+4. Combineer en presenteer aan de gebruiker
+
+Voor eenvoudige vragen handel je zelf af zonder subagents te starten.
+```
+
+> **Waarom:** `threadBindings.spawnSubagentSessions: true` in `openclaw.json` staat de functionaliteit toe, maar de coordinator moet expliciet `thread: true` meegeven bij elke `sessions_spawn`. Dit is gedrag, geen config-optie — het moet in AGENTS.md staan.
+
+---
+
 ## Stap 6 — Openclaw config aanmaken
 
 In de VM of op de host (`~/openclaw-workspace/.openclaw/openclaw.json`):
