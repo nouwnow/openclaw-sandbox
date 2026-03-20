@@ -312,10 +312,19 @@ In de VM of op de host (`~/openclaw-workspace/.openclaw/openclaw.json`):
     }
   },
   "gateway": {
-    "mode": "local"
+    "mode": "local",
+    "auth": {
+      "mode": "token",
+      "token": "your-gateway-token-here"
+    },
+    "controlUi": {
+      "dangerouslyDisableDeviceAuth": true
+    }
   }
 }
 ```
+
+> **dangerouslyDisableDeviceAuth: true** — vereist voor het Mission Control dashboard. Staat toe dat `openclaw-control-ui` clients verbinden zonder device-keypair pairing, mits de gateway auth token klopt en de verbinding via loopback (127.0.0.1) gaat.
 
 > **groupPolicy: "open"** — iedereen in je server kan berichten sturen zonder te pairen.
 > De pairing code die de bot stuurt bij eerste contact is een welkomstmechanisme, geen vereiste.
@@ -342,6 +351,143 @@ Stuur een bericht in je server met **@mention**:
 
 > **Belangrijk:** In server channels reageert de bot alleen op @mentions.
 > In DMs kan de bot direct aangeschreven worden.
+
+---
+
+## Stap 9 — Mission Control dashboard
+
+Het Mission Control dashboard is een Next.js applicatie die live in de VM draait en verbinding maakt met de Openclaw gateway via WebSocket. Het toont actieve agents, sessies, taakwachtrij en een live event feed.
+
+### Wat het dashboard doet
+
+- **Agents** — lijst van alle geconfigureerde agents (coordinator, writer, researcher, editor) met sessiestatus
+- **Active Sessions** — lopende agent-sessies met kind, timestamp en tokengebruik
+- **Task Backlog** — taakwachtrij met status (pending/running/done/failed), aangemaakt via het formulier of Discord
+- **Live Feed** — SSE stream van gateway push-events (sessie-updates, agent-events)
+- **New Task** — formulier om direct taken toe te voegen aan de wachtrij
+
+### Installatie
+
+Het dashboard staat in `~/workspace/dashboard/` (gedeeld via virtiofs).
+
+**Op de host** — maak de configuratie aan:
+```bash
+cat > ~/openclaw-workspace/dashboard/.env.local << 'EOF'
+GATEWAY_URL=ws://127.0.0.1:18789
+GATEWAY_TOKEN=af21006010193b74f53fae1550ea72e6685d497880f4e9c2
+TASKS_API_URL=http://127.0.0.1:3334
+EOF
+```
+
+> Vervang `GATEWAY_TOKEN` met de waarde uit `gateway.auth.token` in `openclaw.json`.
+
+**In de VM** — start het dashboard:
+```bash
+cd ~/workspace/dashboard
+npm install
+npm run dev
+# Dashboard beschikbaar op http://10.0.1.2:3333 (host-netwerk)
+```
+
+**Firewall openen** (éénmalig in de VM, vervalt bij reboot):
+```bash
+sudo iptables -I INPUT -p tcp --dport 3333 -j ACCEPT
+```
+
+Voor permanente firewall-configuratie: voeg de poort toe via `flake.nix` in de `networking.firewall.allowedTCPPorts` lijst.
+
+### Gateway WebSocket protocol
+
+De dashboard-client (`src/lib/gateway.ts`) verbindt via een niet-triviale handshake met de Openclaw gateway. Dit zijn de vereisten die ontdekt zijn tijdens de implementatie:
+
+**1. Request frame format — `type: "req"` is verplicht**
+```json
+{ "type": "req", "id": "uuid", "method": "sessions.list", "params": {} }
+```
+De gateway valideert elk inkomend bericht tegen `RequestFrameSchema` dat `type: "req"` als literal vereist. Zonder dit veld krijg je: `1008 invalid request frame`.
+
+**2. Challenge-response handshake**
+Bij elke nieuwe verbinding stuurt de gateway eerst een challenge event — de client moet wachten op dit event vóór hij `connect` verstuurt:
+```json
+{ "type": "event", "event": "connect.challenge", "payload": { "nonce": "...", "ts": 1234 } }
+```
+Direct `connect` sturen bij `ws.on('open')` werkt niet; de gateway sluit de verbinding zonder reactie.
+
+**3. Connect params met auth, role en scopes**
+```json
+{
+  "minProtocol": 3, "maxProtocol": 3,
+  "client": { "id": "openclaw-control-ui", "mode": "ui", "version": "1.0.0", "platform": "node" },
+  "auth": { "token": "GATEWAY_TOKEN" },
+  "role": "operator",
+  "scopes": ["operator.admin", "operator.read", "operator.write"],
+  "caps": []
+}
+```
+- `client.id` moet een geldige `GATEWAY_CLIENT_IDS` waarde zijn (`"openclaw-control-ui"`, `"cli"`, `"gateway-client"`, etc.)
+- `client.mode` moet een geldige `GATEWAY_CLIENT_MODES` waarde zijn (`"ui"`, `"cli"`, `"backend"`, `"node"`, `"probe"`, `"test"`, `"webchat"`)
+- Zonder `role` en `scopes` worden de aangevraagde scopes gewist door de gateway (`clearUnboundScopes`)
+
+**4. Control UI client zonder device-keypair (dangerouslyDisableDeviceAuth)**
+
+De Openclaw gateway vereist normaal een Ed25519 device-keypair voor alle clients. Dit is onpraktisch voor server-side dashboard verbindingen. De gateway biedt een expliciete bypass voor control UI clients:
+
+```json
+"gateway": {
+  "controlUi": { "dangerouslyDisableDeviceAuth": true }
+}
+```
+
+Met `client.id = "openclaw-control-ui"` EN `dangerouslyDisableDeviceAuth: true`:
+- De gateway accepteert de verbinding zonder device-handtekening
+- Scopes worden **niet** gewist (normale clients zonder device identity verliezen hun scopes)
+- Vereist: geldige gateway auth token én verbinding via loopback (127.0.0.1)
+
+**5. Origin header vereist voor control UI**
+```javascript
+new WebSocket(GATEWAY_URL, {
+  headers: {
+    Authorization: `Bearer ${GATEWAY_TOKEN}`,
+    Origin: 'http://127.0.0.1:3333',
+  }
+})
+```
+De gateway voert een origin-check uit voor alle control UI verbindingen. Zonder Origin header: `{ ok: false, reason: "origin missing or invalid" }`. Een loopback origin (`127.0.0.1`) wordt altijd geaccepteerd voor lokale clients.
+
+**6. Response frame format — `payload`, niet `result`**
+Succesvolle responses gebruiken `payload`, niet `result`:
+```json
+{ "type": "res", "id": "uuid", "ok": true, "payload": { ... } }
+```
+
+**7. `agents.list` en `sessions.list` returnen objecten, geen arrays**
+```javascript
+// agents.list → { defaultId, agents: [...], ... }
+const result = await gatewayRequest('agents.list', {})
+return result?.agents ?? []
+
+// sessions.list → { sessions: [...], count, ... }
+const result = await gatewayRequest('sessions.list', { limit: 20 })
+return result?.sessions ?? []
+```
+
+**8. Next.js bundelt `ws` niet correct op Node.js 22**
+```javascript
+// next.config.js
+serverExternalPackages: ['ws', 'bufferutil', 'utf-8-validate']
+```
+Zonder dit krijg je: `bufferutil.mask is not a function`.
+
+### Tasks API
+
+De tasks worden beheerd door een aparte Express API die in de VM draait op poort 3334. De coordinator leest periodiek taken uit deze API en voert ze uit.
+
+```bash
+# Status tasks API
+curl http://10.0.1.2:3334/tasks
+```
+
+Taken die je aanmaakt via het dashboard-formulier verschijnen in de coordinator's wachtrij. De coordinator pakt ze op, spawnt de juiste subagent (researcher/writer/editor), en updatet de status.
 
 ---
 
@@ -482,3 +628,45 @@ grep "logged in to discord" /tmp/openclaw-gateway.log | tail -1
 # Noteert de bot ID (bijv. 1484294700486627408)
 ```
 Invite URL: `https://discord.com/oauth2/authorize?client_id=BOT_ID&permissions=68608&scope=bot%20applications.commands`
+
+---
+
+### Dashboard: "Gateway connection closed before completing"
+
+De gateway sluit de verbinding zonder reactie. Meest voorkomende oorzaken:
+
+**a) `type: "req"` ontbreekt in het request frame**
+Het gateway protocol vereist `{ type: "req", id, method, params }`. Zonder `type` geeft de gateway: `1008 invalid request frame`.
+
+**b) `connect` gestuurd vóór de challenge**
+De gateway stuurt eerst een `connect.challenge` event. De client moet wachten op dit event en pas daarna `connect` sturen. Direct sturen bij `ws.on('open')` resulteert in een stille verbindingsbreuk.
+
+**c) `auth.token` ontbreekt of klopt niet**
+Stuur `auth: { token: "..." }` met de waarde uit `gateway.auth.token` in `openclaw.json`. De nonce uit de challenge hoeft NIET meegestuurd te worden bij token-authenticatie (de nonce is alleen voor device-keypair auth).
+
+### Dashboard: "missing scope: operator.read"
+
+De connect handshake slaagde maar methode-aanroepen mislukken. Oorzaak: de gateway wist alle aangevraagde scopes voor clients zonder device-identity.
+
+Oplossing: gebruik `client.id = "openclaw-control-ui"` met `dangerouslyDisableDeviceAuth: true` in de gateway config (zie **Stap 9**). Dit voorkomt scope-wissing voor loopback control UI verbindingen.
+
+### Dashboard: sessions/agents tonen 0 items terwijl API 200 geeft
+
+De gateway returnt objecten, geen arrays:
+- `sessions.list` → `{ sessions: [...], count, ts, ... }` — gebruik `result?.sessions ?? []`
+- `agents.list` → `{ agents: [...], defaultId, ... }` — gebruik `result?.agents ?? []`
+
+De `Array.isArray()` check in page.tsx geeft `[]` terug als de API een object returnt.
+
+### Dashboard bereikbaar maar poort 3333 geblokkeerd na reboot
+
+De VM firewall staat standaard geen extra poorten toe. Na elke reboot:
+```bash
+sudo iptables -I INPUT -p tcp --dport 3333 -j ACCEPT
+```
+
+Voor permanente toegang: voeg `3333` toe aan `networking.firewall.allowedTCPPorts` in `flake.nix`.
+
+### Gateway bereikbaar via ws://127.0.0.1:18789 maar NIET via ws://10.0.1.2:18789
+
+De gateway bindt standaard aan loopback (127.0.0.1), niet aan de VM-netwerk interface. Het dashboard **moet in de VM draaien** (niet op de host) om de gateway te kunnen bereiken. Gebruik `GATEWAY_URL=ws://127.0.0.1:18789` in `.env.local`.

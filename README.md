@@ -67,10 +67,11 @@ Each sub-agent gets its own **Discord thread** — you watch the full pipeline l
 ```
 Host (Linux)
 └── NixOS MicroVM (cloud-hypervisor, 8GB RAM, 4 vCPU)
-    ├── openclaw-gateway (port 18789)  ← coordinator, Discord-connected
-    ├── openclaw-writer   (port 18790) ← leaf agent, no Discord
+    ├── openclaw-gateway    (port 18789) ← coordinator, Discord-connected
+    ├── openclaw-writer     (port 18790) ← leaf agent, no Discord
     ├── openclaw-researcher (port 18791) ← leaf agent, no Discord
-    ├── openclaw-editor   (port 18792) ← leaf agent, no Discord
+    ├── openclaw-editor     (port 18792) ← leaf agent, no Discord
+    ├── dashboard (Next.js) (port 3333)  ← Mission Control web UI
     └── virtiofs mounts
         ├── /nix/store        → host Nix store (read-only)
         └── /home/agent/workspace → ~/openclaw-workspace (read-write, persistent)
@@ -281,6 +282,80 @@ Configure multi-agent orchestration in openclaw.json:
 
 ---
 
+## Mission Control Dashboard
+
+A local web dashboard for monitoring and controlling your Openclaw pipeline in real time — without Discord.
+
+```
+Browser (host)
+    │
+    ▼  http://10.0.1.2:3333
+Next.js dashboard (in VM)
+    │  WebSocket (gateway protocol)
+    ▼
+openclaw-gateway (port 18789)
+```
+
+**What you see:**
+- **Live task feed** — all running and completed tasks, streamed via SSE
+- **Agents panel** — connected agents with IDs, modes, and status
+- **Sessions panel** — active sessions with protocol and scope info
+- **Real-time updates** — push events from the gateway appear instantly without polling
+
+### Setup
+
+```bash
+# In the VM
+cd ~/workspace
+npm install -g next react react-dom
+# or if the dashboard is already in place:
+cd ~/workspace/dashboard
+npm install
+npm run dev -- --port 3333 --hostname 0.0.0.0
+```
+
+Then open `http://10.0.1.2:3333` in a browser on the host.
+
+### Running as a service
+
+Add a systemd unit so the dashboard starts with the VM. Edit `flake.nix` to add:
+```nix
+systemd.services.openclaw-dashboard = {
+  description = "Openclaw Mission Control Dashboard";
+  after = [ "network.target" "openclaw-gateway.service" ];
+  wantedBy = [ "multi-user.target" ];
+  environment = {
+    GATEWAY_URL   = "ws://127.0.0.1:18789";
+    GATEWAY_TOKEN = "your-token-here";
+  };
+  serviceConfig = {
+    User       = "agent";
+    WorkingDirectory = "/home/agent/workspace/dashboard";
+    ExecStart  = "${pkgs.nodejs}/bin/node node_modules/.bin/next start -p 3333 -H 0.0.0.0";
+    Restart    = "on-failure";
+  };
+};
+```
+
+### Gateway protocol notes
+
+The dashboard connects to the Openclaw gateway over WebSocket using the internal protocol. Several non-obvious requirements must be satisfied:
+
+| Requirement | Detail |
+|---|---|
+| Challenge-response | Gateway sends `connect.challenge` on open; client must wait for it before sending `connect` |
+| Request frame type | Every `ws.send()` must include `"type": "req"` — omitting it causes `1008 invalid request frame` |
+| Client identity | `client.id` must be `"openclaw-control-ui"` to access operator scopes without a device keypair |
+| Origin header | Requires `Origin: http://127.0.0.1:3333` for loopback origin check |
+| Auth | Plain token auth: `auth: { token: "..." }` — no HMAC or signature required |
+| Device auth bypass | `controlUi.dangerouslyDisableDeviceAuth: true` in `openclaw.json` skips Ed25519 keypair requirement |
+| Response field | Responses carry data in `payload`, not `result` |
+| Push subscription | After connect: send `push.subscribe` with `topics: ["sessions", "agents", "tasks"]` |
+
+See [OPENCLAW-SETUP.md — Stap 9](OPENCLAW-SETUP.md) for the full protocol walkthrough and `openclaw.json` config.
+
+---
+
 ## Configuration
 
 ### Resource scaling
@@ -373,7 +448,12 @@ openclaw-sandbox/
 │   └── workspace/
 │       └── AGENTS.md          # Coordinator instructions: always use thread: true
 ├── .openclaw-bundled-plugins/ # Plugin overlay (74 plugins, workaround for Nix)
-└── content/                   # Agent output — files written by the pipeline
+├── content/                   # Agent output — files written by the pipeline
+└── dashboard/                 # Mission Control web dashboard (Next.js)
+    ├── src/app/api/feed/      # SSE stream — gateway push events → browser
+    ├── src/app/api/agents/    # REST — agents.list
+    ├── src/app/api/sessions/  # REST — sessions.list
+    └── src/lib/gateway.ts     # Gateway WebSocket client (challenge-response)
 ```
 
 ---
@@ -440,6 +520,28 @@ ping 8.8.8.8
 # Not reachable? On the host:
 sudo ~/openclaw-sandbox/setup-network.sh
 ```
+
+</details>
+
+<details>
+<summary>Dashboard shows "Gateway connection closed" or 500 errors</summary>
+
+The gateway requires a specific connection handshake. Common causes:
+
+- **Wrong `client.id`** — must be `"openclaw-control-ui"` (not `"gateway-client"` or `"cli"`)
+- **Missing `type: "req"`** — every request frame must include this field
+- **`connect` sent before challenge** — wait for `connect.challenge` event before sending `connect`
+- **Missing `dangerouslyDisableDeviceAuth`** — without this in `openclaw.json`, the gateway clears all scopes for clients without an Ed25519 device keypair, causing `missing scope: operator.read`
+- **Wrong `GATEWAY_URL`** — inside the VM use `ws://127.0.0.1:18789`; from the host use `ws://10.0.1.2:18789`
+
+See [OPENCLAW-SETUP.md — Stap 9](OPENCLAW-SETUP.md) for the full protocol and config.
+
+</details>
+
+<details>
+<summary>Dashboard agents/sessions panel shows 0 items despite 200 OK</summary>
+
+The gateway wraps list results in an object: `agents.list` returns `{ agents: [...], defaultId, ... }` and `sessions.list` returns `{ sessions: [...], count, ... }`. The API routes must extract the nested array, not return the wrapper object directly.
 
 </details>
 
