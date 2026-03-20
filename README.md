@@ -33,6 +33,13 @@ The result: Openclaw's full multi-agent power — coordinator, writer, researche
 
 ## What You Get
 
+<div align="center">
+<img src="assets/office-preview.png" alt="Mission Control — Pixel Art Office" width="820" />
+<p><em>Mission Control — live pixel art view of your agent team. Characters walk to their desks when working, rest at the pool when done, and show speech bubbles with what they're actually writing.</em></p>
+</div>
+
+---
+
 **One Discord bot. A full AI team behind it.**
 
 ```
@@ -284,75 +291,221 @@ Configure multi-agent orchestration in openclaw.json:
 
 ## Mission Control Dashboard
 
-A local web dashboard for monitoring and controlling your Openclaw pipeline in real time — without Discord.
+A fully local Next.js dashboard that runs inside the VM and is accessible from your host browser at `http://10.0.1.2:3333`. No cloud, no external services — everything streams directly from the Openclaw gateway over WebSocket.
 
 ```
-Browser (host)
-    │
-    ▼  http://10.0.1.2:3333
-Next.js dashboard (in VM)
-    │  WebSocket (gateway protocol)
-    ▼
-openclaw-gateway (port 18789)
+Host browser  →  http://10.0.1.2:3333
+                      │
+              Next.js (in VM, port 3333)
+                      │  WebSocket + SSE
+              openclaw-gateway (port 18789)
+                      │
+              coordinator / writer / researcher / editor
 ```
 
-**What you see:**
-- **Live task feed** — all running and completed tasks, streamed via SSE
-- **Agents panel** — connected agents with IDs, modes, and status
-- **Sessions panel** — active sessions with protocol and scope info
-- **Real-time updates** — push events from the gateway appear instantly without polling
+The dashboard has five tabs, each auto-refreshing from live gateway events:
+
+### Tab 1 — Dashboard
+
+Real-time overview of everything happening right now:
+
+- **Agents panel** — all configured agents with name and session count
+- **Active sessions** — open conversations per agent with token usage and age
+- **Task backlog** — all queued, running, and completed tasks; create new tasks via the form
+- **Live feed** — raw gateway push events streamed via SSE as they arrive
+- **Stats bar** — pending / running count and active session count at a glance
+
+Sessions and agents refresh every 5 minutes via polling. The live feed updates instantly via SSE — no polling.
+
+### Tab 2 — 🏢 Office (Pixel Art)
+
+A 2D pixel art simulation of your agent team rendered on an HTML5 Canvas. Characters react to live gateway events in real time:
+
+| Agent state | Trigger | Animation |
+|---|---|---|
+| Walking to desk | `agent lifecycle: phase=start` | Character moves toward its assigned desk |
+| Typing at desk | Arrived at desk | Hands-on-keyboard animation, green status dot |
+| Speech bubble | `chat delta` event | What the agent is currently writing appears above its head |
+| Walking to pool | `agent lifecycle: phase=end` | Character moves to the swimming pool to rest |
+| Resting at pool | At pool | Floating arm animation, blue status dot |
+| Error flash | `agent lifecycle: phase=error` | Red `!` above head, 3-second error state |
+| Idle wandering | No active session | Character roams slowly between zones |
+
+Each agent has a fixed desk, a shared meeting table, and a shared swimming pool. The status bar at the top always shows the current state of every agent.
+
+### Tab 3 — Calendar (Scheduled Tasks)
+
+Visual weekly calendar for all Openclaw cron jobs stored in `~/.openclaw/cron/jobs.json`:
+
+- **Always Running** section — interval-based jobs (`kind: "every"`) shown as permanent badges
+- **Weekly grid** — cron jobs plotted on the correct days based on the weekday field of the cron expression (`0 9 * * 1-5` → Mon–Fri)
+- **Today highlight** — current day column is highlighted in red
+- **Job detail modal** — click any job to see: agent, schedule expression, timezone, next/last run time, error count, and full prompt
+- **Enable/disable toggle** and **delete** from the modal
+- **New schedule form** — create a cron or interval job with agent, expression, timezone, prompt, and timeout
+
+Schedules are read and written directly from `jobs.json`. The Openclaw gateway picks up changes on restart.
+
+### Tab 4 — Memory
+
+Browse the full conversation history of all agents, grouped by day:
+
+- **Long-term memory section** — workspace Markdown files (`SOUL.md`, `USER.md`, `IDENTITY.md`, `HEARTBEAT.md`) shown per agent with word count and last-updated timestamp
+- **Daily journal** — all sessions across all agents grouped by date, newest first, with total size per day
+- **Day view** — click a day to see all sessions that ran that day, per agent, with start time and file size
+- **Conversation view** — click a session to see the full chat rendered as a conversation: user messages on the right, assistant on the left, timestamps on each message
+- **Search** — filter by agent name or date
+
+Memory is read directly from `~/.openclaw/agents/{agent}/sessions/*.jsonl` — one file per conversation, date extracted from the first line.
+
+### Tab 5 — Docs
+
+Document viewer for all files the agents have created:
+
+- **Category filter chips** — filter by `articles`, `newsletters`, `research`, `scripts`, or `other`
+- **Full-text search** — searches title, slug, agent name, and date
+- **File list** — sorted by date descending, with category badge, file size, and word count
+- **Rendered markdown** — right panel renders the document with headers, bold, lists, code, and blockquotes
+- **File header** — shows filename, category, size, word count, creation date, and which agent wrote it
+
+All agents save output to `~/workspace/content/{category}/YYYY-MM-DD_{agent}_{slug}.md`. This convention is configured in each agent's `AGENTS.md` workspace instructions.
+
+---
 
 ### Setup
 
+The dashboard is a Next.js app located in `~/workspace/dashboard/`. It is configured as a **systemd service** in `flake.nix` and starts automatically with the VM — no manual steps needed after a `nix build`.
+
+**First-time setup (in the VM):**
 ```bash
-# In the VM
-cd ~/workspace
-npm install -g next react react-dom
-# or if the dashboard is already in place:
 cd ~/workspace/dashboard
 npm install
-npm run dev -- --port 3333 --hostname 0.0.0.0
 ```
 
-Then open `http://10.0.1.2:3333` in a browser on the host.
+**After `nix build` + VM restart:** the dashboard builds and starts automatically. Available at `http://10.0.1.2:3333`.
 
-### Running as a service
+**Check status:**
+```bash
+sudo systemctl status openclaw-dashboard
+sudo journalctl -u openclaw-dashboard -f
+```
 
-Add a systemd unit so the dashboard starts with the VM. Edit `flake.nix` to add:
+> **Build time:** the systemd service runs `npm run build` on every start/restart (~15–20 seconds). The dashboard is only available after the build completes.
+
+**Manual restart:**
+```bash
+sudo systemctl restart openclaw-dashboard
+```
+
+---
+
+### NixOS + VM Challenges and Solutions
+
+Running a Next.js app inside a NixOS MicroVM requires solving several non-obvious problems. These are all already solved in this repo — documented here so you understand why the config looks the way it does.
+
+<details>
+<summary><strong>1. systemd service fails with <code>spawn sh ENOENT</code></strong></summary>
+
+**Problem:** `npm run build` in a systemd service immediately fails. `npm` runs scripts by invoking `sh` internally, but NixOS systemd services get a minimal `PATH` with no `/bin/sh`.
+
+**Solution:** Add `path = [ pkgs.bash pkgs.nodejs_20 pkgs.coreutils ]` to the service definition in `flake.nix`. This puts bash, node, and standard tools in the service's `PATH`.
+
 ```nix
 systemd.services.openclaw-dashboard = {
-  description = "Openclaw Mission Control Dashboard";
-  after = [ "network.target" "openclaw-gateway.service" ];
-  wantedBy = [ "multi-user.target" ];
-  environment = {
-    GATEWAY_URL   = "ws://127.0.0.1:18789";
-    GATEWAY_TOKEN = "your-token-here";
-  };
-  serviceConfig = {
-    User       = "agent";
-    WorkingDirectory = "/home/agent/workspace/dashboard";
-    ExecStart  = "${pkgs.nodejs}/bin/node node_modules/.bin/next start -p 3333 -H 0.0.0.0";
-    Restart    = "on-failure";
-  };
+  path = [ pkgs.bash pkgs.nodejs_20 pkgs.coreutils ];
+  ...
 };
 ```
 
-### Gateway protocol notes
+</details>
 
-The dashboard connects to the Openclaw gateway over WebSocket using the internal protocol. Several non-obvious requirements must be satisfied:
+<details>
+<summary><strong>2. Firewall blocks port 3333 — browser can't connect</strong></summary>
 
-| Requirement | Detail |
+**Problem:** The Next.js server binds on `0.0.0.0:3333` inside the VM, but the NixOS firewall drops incoming packets from the host. `http://10.0.1.2:3333` times out in the browser.
+
+**Solution:** Add port 3333 to `networking.firewall.allowedTCPPorts` in `flake.nix`. Already done.
+
+**Quick fix without rebuild:**
+```bash
+sudo iptables -I INPUT -p tcp --dport 3333 -j ACCEPT
+```
+
+</details>
+
+<details>
+<summary><strong>3. Gateway WebSocket protocol — 8 non-obvious requirements</strong></summary>
+
+The Openclaw gateway uses a custom WebSocket protocol. None of this is documented publicly — it was reverse-engineered from the minified source in the Nix store.
+
+| Requirement | What happens if you get it wrong |
 |---|---|
-| Challenge-response | Gateway sends `connect.challenge` on open; client must wait for it before sending `connect` |
-| Request frame type | Every `ws.send()` must include `"type": "req"` — omitting it causes `1008 invalid request frame` |
-| Client identity | `client.id` must be `"openclaw-control-ui"` to access operator scopes without a device keypair |
-| Origin header | Requires `Origin: http://127.0.0.1:3333` for loopback origin check |
-| Auth | Plain token auth: `auth: { token: "..." }` — no HMAC or signature required |
-| Device auth bypass | `controlUi.dangerouslyDisableDeviceAuth: true` in `openclaw.json` skips Ed25519 keypair requirement |
-| Response field | Responses carry data in `payload`, not `result` |
-| Push subscription | After connect: send `push.subscribe` with `topics: ["sessions", "agents", "tasks"]` |
+| Wait for `connect.challenge` before sending `connect` | Gateway closes silently |
+| Include `"type": "req"` in every request frame | `1008 invalid request frame` |
+| Use `client.id = "openclaw-control-ui"` | All scopes are cleared → `missing scope: operator.read` |
+| Include `Origin: http://127.0.0.1:3333` header | `origin missing or invalid` |
+| Set `dangerouslyDisableDeviceAuth: true` in `openclaw.json` | Ed25519 keypair required → connection refused |
+| Auth is plain token: `auth: { token: "..." }` | Trying HMAC causes auth failure |
+| Response data is in `payload`, not `result` | Silent empty responses |
+| `agents.list` / `sessions.list` return wrapper objects | Panels show 0 items despite 200 OK |
 
-See [OPENCLAW-SETUP.md — Stap 9](OPENCLAW-SETUP.md) for the full protocol walkthrough and `openclaw.json` config.
+All of these are solved in `src/lib/gateway.ts`.
+
+</details>
+
+<details>
+<summary><strong>4. <code>tasks.list</code> does not exist in the gateway</strong></summary>
+
+**Problem:** The gateway has no `tasks.list` RPC method. Calling it returns `unknown method: tasks.list`.
+
+**Solution:** Tasks are stored locally in `~/.openclaw/tasks.json` and read/written directly by the Next.js API routes — no gateway needed.
+
+</details>
+
+<details>
+<summary><strong>5. <code>ws</code> package requires <code>serverExternalPackages</code></strong></summary>
+
+**Problem:** Next.js on Node.js 20+ tries to bundle the `ws` WebSocket package. This breaks at runtime with `bufferutil.mask is not a function`.
+
+**Solution:** Add to `next.config.js`:
+```js
+serverExternalPackages: ['ws', 'bufferutil', 'utf-8-validate']
+```
+
+</details>
+
+<details>
+<summary><strong>6. Agent memory is UUID-based, not date-based</strong></summary>
+
+**Problem:** Openclaw session files are named by UUID (`3759cfbe-....jsonl`), not by date. There is no `sessions.list` gateway method that returns dates.
+
+**Solution:** The memory API reads the first line of each `.jsonl` file to extract the `timestamp` field, then groups sessions by date client-side.
+
+</details>
+
+---
+
+### Gateway Push Events (for the Pixel Art Office)
+
+The office simulation is driven by live WebSocket events. Key event types:
+
+```javascript
+// Agent starts working → walk to desk
+{ event: 'agent', payload: { stream: 'lifecycle', data: { phase: 'start' }, sessionKey: 'agent:coordinator:...' }}
+
+// Agent writing → speech bubble
+{ event: 'agent', payload: { stream: 'assistant', data: { delta: '...', text: '...' }, sessionKey: '...' }}
+
+// Agent done → walk to pool
+{ event: 'agent', payload: { stream: 'lifecycle', data: { phase: 'end' }, sessionKey: '...' }}
+
+// Cron job fired → coordinator goes to work
+{ event: 'cron', payload: { action: 'started', jobId: '...' }}
+```
+
+Extract `agentId` from `sessionKey`: `'agent:coordinator:cron:...'` → `split(':')[1]` → `'coordinator'`
+
+See [OPENCLAW-SETUP.md — Stap 9](OPENCLAW-SETUP.md) for the full gateway protocol reference.
 
 ---
 
