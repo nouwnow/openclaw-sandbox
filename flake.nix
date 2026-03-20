@@ -95,6 +95,8 @@
 
           virtualisation.docker.enable = true;
 
+          networking.firewall.allowedTCPPorts = [ 3333 ];
+
           # Credential proxy poort voor Docker containers
           networking.firewall.extraCommands = ''
             iptables -I INPUT -i docker0 -p tcp --dport 3001 -j ACCEPT
