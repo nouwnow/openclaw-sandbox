@@ -1,0 +1,17 @@
+# Build output
+result
+
+# VM runtime bestanden
+*.img
+*.sock
+*.sock.pid
+*.pid
+*.log
+
+# Supervisor
+supervisord.log
+supervisord.pid
+
+# Tijdelijke bestanden
+credentials.txt
+.env
