@@ -157,7 +157,7 @@
             after       = [ "network.target" "openclaw-gateway.service" ];
             wantedBy    = [ "multi-user.target" ];
             # npm scripts draaien via sh — zorg dat bash + node in PATH zitten
-            path        = [ pkgs.bash pkgs.nodejs_20 pkgs.coreutils pkgs.sqlite ];
+            path        = [ pkgs.bash pkgs.nodejs_20 pkgs.coreutils pkgs.python3 ];
             environment = {
               GATEWAY_URL = "ws://127.0.0.1:18789";
               NODE_ENV    = "production";
