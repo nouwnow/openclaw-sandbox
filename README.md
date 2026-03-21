@@ -894,15 +894,9 @@ Niet elke taak vereist het duurste model. De agent-tier mapping:
 
 De coordinator instrueert welke subagent een taak uitvoert. Simpele taken gaan naar Haiku (editor/memory-agent), complexe taken naar Sonnet (writer/researcher), onoplosbare taken naar Opus.
 
-#### Laag 3 — Compaction (geconfigureerd ✅)
+#### Laag 3 — Compaction (actief als ingebouwde default ✅)
 
-```json
-"agents": {
-  "defaults": { "compaction": { "mode": "safeguard" } }
-}
-```
-
-`safeguard` comprimeert alleen bij dreigende overflow — veiligste optie. Per-agent compaction override (`default` voor memory-agent) is niet ondersteund in de huidige versie van OpenClaw.
+`compaction` is niet configureerbaar via `openclaw.json` in v2026.3.14 — zowel op `agents.defaults` als op `agents.list` niveau wordt het als invalid key beschouwd en veroorzaakt een gateway crash. OpenClaw gebruikt automatisch `safeguard` modus als ingebouwde default: context wordt gecomprimeerd bij dreigende overflow, zonder configuratie nodig.
 
 #### Laag 4 — Bootstrap limieten (geconfigureerd ✅)
 
