@@ -95,7 +95,7 @@
 
           virtualisation.docker.enable = true;
 
-          networking.firewall.allowedTCPPorts = [ 3333 ];
+          networking.firewall.allowedTCPPorts = [ 3333 18790 18791 ];
 
           # Credential proxy poort voor Docker containers
           networking.firewall.extraCommands = ''
@@ -130,6 +130,10 @@
             "d /home/agent/workspace/.openclaw/agents/editor/agent     0755 agent agent -"
             # Bundled plugins overlay — manifests ontbreken in Nix package (zie OPENCLAW-SETUP.md)
             "d /home/agent/workspace/.openclaw-bundled-plugins         0755 agent agent -"
+            # Project-A gateway state directories
+            "d /home/agent/workspace/project-a/.openclaw/logs                    0755 agent agent -"
+            "d /home/agent/workspace/project-a/.openclaw/agents/coordinator/agent 0755 agent agent -"
+            "d /home/agent/workspace/project-a/.openclaw/workspace/memory        0755 agent agent -"
           ];
 
           # ── Openclaw gateway — coordinator (poort 18789) ───────
@@ -146,6 +150,24 @@
             restart      = "always";
             logPath      = "/tmp/openclaw-gateway.log";
             # OPENCLAW_CONFIG_PATH in .env overschrijft dit — wijst naar workspace config
+            config.gateway.mode = "local";
+          };
+
+          # ── Project-A gateway (poort 18790) ────────────────────
+          # Tweede gateway voor project-isolatie. Eigen openclaw.json,
+          # eigen workspace, eigen memory. Orchestrator (18789) routeert
+          # taakopdrachten door naar project-a via het delegatie-protocol.
+          services.openclaw-gateway-project-a = {
+            enable       = true;
+            package      = pkgs.openclaw;
+            user         = "agent";
+            group        = "agent";
+            createUser   = false;
+            stateDir     = "/home/agent/workspace/project-a/.openclaw";
+            port         = 18790;
+            environmentFiles = [ "/home/agent/workspace/.env" ];
+            restart      = "always";
+            logPath      = "/tmp/openclaw-project-a.log";
             config.gateway.mode = "local";
           };
 
