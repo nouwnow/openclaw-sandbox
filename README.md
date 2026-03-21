@@ -898,14 +898,49 @@ De coordinator instrueert welke subagent een taak uitvoert. Simpele taken gaan n
 
 ```json
 "agents": {
-  "defaults": { "compaction": { "mode": "safeguard" } },
-  "memory-agent": { "compaction": { "mode": "default" } }
+  "defaults": { "compaction": { "mode": "safeguard" } }
 }
 ```
 
-`safeguard` comprimeert alleen bij dreigende overflow — veiligste optie. `default` (voor memory-agent) comprimeert agressiever omdat memory-taken nooit diepe history nodig hebben.
+`safeguard` comprimeert alleen bij dreigende overflow — veiligste optie. Per-agent compaction override (`default` voor memory-agent) is niet ondersteund in de huidige versie van OpenClaw.
 
-#### Laag 4 — Dedicated agents per domein ✅
+#### Laag 4 — Bootstrap limieten (geconfigureerd ✅)
+
+OpenClaw laadt alle identity files (SOUL.md, AGENTS.md, etc.) als systeem-prompt bij elke sessie. Zonder limieten kan een groeiende AGENTS.md ongemerkt honderden tokens per beurt kosten.
+
+```json
+"agents": {
+  "defaults": {
+    "bootstrapMaxChars": 12000,
+    "bootstrapTotalMaxChars": 40000
+  }
+}
+```
+
+- `bootstrapMaxChars` — maximale tekenlengte per individueel bestand
+- `bootstrapTotalMaxChars` — gecombineerd maximum over alle bootstrap-bestanden
+
+**Vuistregel:** `wc -m workspace/*.md` geeft tekencount. Deel door 4 voor een tokenschatting. De huidige AGENTS.md is ~6.000 tekens (±1.500 tokens) — ruim binnen de limiet.
+
+#### Laag 5 — Minimal promptmodus voor subagents (geconfigureerd ✅)
+
+Subagents (writer, researcher, editor, memory-agent) voeren een specifieke taak uit en hebben geen Skills-systeem, Heartbeats of Messaging nodig. De `minimal` promptmodus verwijdert al die overhead uit hun context:
+
+```json
+{
+  "id": "writer",
+  "promptMode": "minimal"
+}
+```
+
+| Modus | Bevat | Gebruik |
+|---|---|---|
+| `full` (default) | Skills, Memory Recall, Heartbeats, Messaging, Reply Tags | Coordinator — heeft alles nodig |
+| `minimal` | Alleen taak-instructies en tools | Subagents — voeren één taak uit |
+
+Geschatte besparing: 20-40% minder tokens per subagent-aanroep door het weggooien van ongebruikte systeem-prompt-secties.
+
+#### Laag 6 — Dedicated agents per domein ✅
 
 **Dit is de kern van het multi-agent ontwerp.** Eén grote coordinator met alles in zijn context is duurder en trager dan meerdere agents met kleinere, gefocuste contexten:
 
@@ -930,7 +965,7 @@ Elke agent heeft zijn eigen `workspace-{id}/AGENTS.md` met alleen de instructies
 | Oplossing | Wat het doet | Status |
 |---|---|---|
 | **Mem0 / native search** | Vervangt groeiende conversation history door gerichte retrieval | Configureerbaar (zie Memory sectie) |
-| **Kortere identity files** | Kleinere SOUL.md / AGENTS.md = minder vaste overhead per sessie | Handmatig |
+| **AGENTS.md pruning** | Wekelijks verouderde instructies verwijderen, patronen naar SOUL.md promoveren | Handmatig onderhoud |
 | **Ollama Tier 1** | Lokaal model voor classificatie/routing — geen API-kosten | Toekomstig (PRD-v3) |
 | **Shared KV-cache** | Anthropic werkt aan cache die tussen sessies blijft leven | Roadmap Anthropic |
 | **Context distillation** | Agent vat zichzelf samen na elke sessie (uitbreiding op compaction) | Toekomstig |
