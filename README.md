@@ -916,9 +916,9 @@ OpenClaw laadt alle identity files (SOUL.md, AGENTS.md, etc.) als systeem-prompt
 
 **Vuistregel:** `wc -m workspace/*.md` geeft tekencount. Deel door 4 voor een tokenschatting. De huidige AGENTS.md is ~6.000 tekens (±1.500 tokens) — ruim binnen de limiet.
 
-#### Laag 5 — Minimal promptmodus voor subagents (geconfigureerd ✅)
+#### Laag 5 — Minimal promptmodus voor subagents (niet ondersteund in v2026.3.14)
 
-Subagents (writer, researcher, editor, memory-agent) voeren een specifieke taak uit en hebben geen Skills-systeem, Heartbeats of Messaging nodig. De `minimal` promptmodus verwijdert al die overhead uit hun context:
+`promptMode: minimal` op agent-niveau veroorzaakt een gateway crashloop — de key wordt als invalid beschouwd. Het concept is correct: subagents hebben geen Skills, Heartbeats of Messaging nodig. Zodra OpenClaw dit ondersteunt is de gewenste config:
 
 ```json
 {
@@ -932,7 +932,7 @@ Subagents (writer, researcher, editor, memory-agent) voeren een specifieke taak 
 | `full` (default) | Skills, Memory Recall, Heartbeats, Messaging, Reply Tags | Coordinator — heeft alles nodig |
 | `minimal` | Alleen taak-instructies en tools | Subagents — voeren één taak uit |
 
-Geschatte besparing: 20-40% minder tokens per subagent-aanroep door het weggooien van ongebruikte systeem-prompt-secties.
+Geschatte besparing zodra beschikbaar: 20-40% minder tokens per subagent-aanroep.
 
 #### Laag 6 — Dedicated agents per domein ✅
 
