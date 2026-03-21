@@ -898,6 +898,8 @@ De coordinator instrueert welke subagent een taak uitvoert. Simpele taken gaan n
 
 `compaction` is niet configureerbaar via `openclaw.json` in v2026.3.14 — zowel op `agents.defaults` als op `agents.list` niveau wordt het als invalid key beschouwd en veroorzaakt een gateway crash. OpenClaw gebruikt automatisch `safeguard` modus als ingebouwde default: context wordt gecomprimeerd bij dreigende overflow, zonder configuratie nodig.
 
+> Zodra OpenClaw dit fixt: zie [issue #1](https://github.com/nouwnow/openclaw-sandbox/issues/1)
+
 #### Laag 4 — Bootstrap limieten (geconfigureerd ✅)
 
 OpenClaw laadt alle identity files (SOUL.md, AGENTS.md, etc.) als systeem-prompt bij elke sessie. Zonder limieten kan een groeiende AGENTS.md ongemerkt honderden tokens per beurt kosten.
@@ -933,6 +935,8 @@ OpenClaw laadt alle identity files (SOUL.md, AGENTS.md, etc.) als systeem-prompt
 | `minimal` | Alleen taak-instructies en tools | Subagents — voeren één taak uit |
 
 Geschatte besparing zodra beschikbaar: 20-40% minder tokens per subagent-aanroep.
+
+> Zodra OpenClaw dit fixt: zie [issue #2](https://github.com/nouwnow/openclaw-sandbox/issues/2)
 
 #### Laag 6 — Dedicated agents per domein ✅
 
@@ -972,7 +976,7 @@ Elke agent heeft zijn eigen `workspace-{id}/AGENTS.md` met alleen de instructies
 - `model: haiku` — 4× goedkoper per heartbeat-trigger
 - `intervalMinutes: 28` — effectief interval is 2× geconfigureerd (bekend bug #47940), dus 28 → ~56 min om cache warm te houden
 
-> **Niet toepassen totdat OpenClaw heartbeat-config valideert zonder crash.**
+> **Niet toepassen totdat OpenClaw heartbeat-config valideert zonder crash.** Zie [issue #3](https://github.com/nouwnow/openclaw-sandbox/issues/3)
 
 #### Laag 8 — Cron frequentie (geconfigureerd ✅)
 
