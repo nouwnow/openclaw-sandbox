@@ -960,6 +960,18 @@ Elke agent heeft zijn eigen `workspace-{id}/AGENTS.md` met alleen de instructies
 
 ---
 
+#### Laag 7 — Cron frequentie (geconfigureerd ✅)
+
+Elke cron trigger start een nieuwe sessie met volledige context-injectie. Hoge frequentie = directe kostenvermeerdering.
+
+| Job | Oud | Nieuw | Triggers/dag |
+|---|---|---|---|
+| `task-checker` | elke 5 min | elke 60 min | 288 → **24** (12× minder) |
+
+De `elk-uur-statuscheck` en `dagelijkse-briefing` waren al op verstandige intervallen. De heartbeat-interval is niet configureerbaar in OpenClaw 2026.3.14 — dat is een gateway-intern mechanisme zonder config-exposure.
+
+---
+
 ### Toekomstige optimalisaties
 
 | Oplossing | Wat het doet | Status |
