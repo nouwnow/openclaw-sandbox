@@ -74,14 +74,30 @@ Each sub-agent gets its own **Discord thread** — you watch the full pipeline l
 ```
 Host (Linux)
 └── NixOS MicroVM (cloud-hypervisor, 8GB RAM, 4 vCPU)
-    ├── openclaw-gateway    (port 18789) ← coordinator, Discord-connected
-    ├── openclaw-writer     (port 18790) ← leaf agent, no Discord
-    ├── openclaw-researcher (port 18791) ← leaf agent, no Discord
-    ├── openclaw-editor     (port 18792) ← leaf agent, no Discord
-    ├── dashboard (Next.js) (port 3333)  ← Mission Control web UI
+    ├── openclaw-gateway          (port 18789) ← orchestrator: coordinator + writer + researcher + editor
+    ├── openclaw-gateway-project-a (port 18790) ← project-a: coordinator-a (isolated workspace)
+    ├── dashboard (Next.js)        (port 3333)  ← Mission Control web UI
     └── virtiofs mounts
         ├── /nix/store        → host Nix store (read-only)
         └── /home/agent/workspace → ~/openclaw-workspace (read-write, persistent)
+```
+
+**Multi-gateway routing:**
+```
+Discord / Mission Control
+          │
+          ▼
+┌─────────────────────────┐
+│  ORCHESTRATOR  (:18789) │  ← coordinator routes tasks
+│  writer / researcher    │  ← content pipeline agents
+│  editor                 │
+└────────────┬────────────┘
+             │ delegates via agentTurn
+             ▼
+┌─────────────────────────┐
+│  PROJECT-A  (:18790)    │  ← isolated context, own memory
+│  coordinator-a          │
+└─────────────────────────┘
 ```
 
 **Isolation model:**
@@ -289,21 +305,152 @@ Configure multi-agent orchestration in openclaw.json:
 
 ---
 
-## Mission Control Dashboard
+## Hybride Memory & Multi-Project Orchestratie
 
-A fully local Next.js dashboard that runs inside the VM and is accessible from your host browser at `http://10.0.1.2:3333`. No cloud, no external services — everything streams directly from the Openclaw gateway over WebSocket.
+> **Voor nieuwe gebruikers:** De standaard Openclaw-setup werkt direct en is krachtig genoeg voor de meeste use cases. De hybride memory-uitbreiding en multi-project architectuur beschreven in deze sectie zijn **gevorderd** — ze voegen significant waarde toe als je setup groeit, maar zijn niet vereist om te starten.
+
+### Het probleem met de standaard setup
+
+Openclaw werkt standaard met één grote memory-file (`MEMORY.md`) die bij elke sessie volledig in de context van de agent wordt geladen. Dit werkt prima voor kleine projecten, maar wordt problematisch naarmate het systeem groeit:
+
+| Probleem | Gevolg |
+|---|---|
+| Alle context altijd aanwezig | Hoge tokenkosten, zelfs voor eenvoudige taken |
+| Geen projectisolatie | Agent van project A "weet" alles over project B |
+| Memory groeit ongecontroleerd | Agent raakt verward door irrelevante oude informatie |
+| Één gateway voor alles | Downtime of herstart van één agent beïnvloedt alle projecten |
+
+**Concreet voorbeeld van context-vervuiling:**
+Je hebt een contentproject (artikelen schrijven) en een administratieproject (facturen verwerken). Zonder isolatie krijgt de schrijver-agent informatie over BTW-tarieven mee wanneer hij een artikel schrijft, en de administratie-agent leest schrijfstijlgidsen terwijl hij facturen verwerkt. Dit kost tokens en verwarrt de agent.
+
+---
+
+### De hybride oplossing — 4 methoden gecombineerd
+
+We hebben vier complementaire memory-methoden geïmplementeerd die samen de standaard setup volledig vervangen:
+
+| Methode | Type | Status | Waarde |
+|---|---|---|---|
+| **Folders** — `memory/projects/`, `memory/preferences/` | Markdown bestanden | ✅ Actief | Transparant, altijd beschikbaar bij sessie-start |
+| **Native Memory Search** — `agents.defaults.memorySearch` | Semantische zoekopdracht via Gemini/OpenAI/Voyage embeddings | ✅ Actief | Agent zoekt zelf relevante context op via `memory_search` tool |
+| **Extractie-cron** — dagelijks 23:00 | Automatische samenvatting van sessie-logs | ✅ Actief | Geen handwerk — dagelijkse feiten worden automatisch opgeslagen |
+| **Facts DB** — `memory/facts.db` (SQLite) | Gestructureerde opslag voor feiten en content | ✅ Actief | Exacte queries: "welke artikelen zijn gepubliceerd?" |
+
+De native memory search vereist een embedding API key (`GEMINI_API_KEY`, `OPENAI_API_KEY` of `VOYAGE_API_KEY`) in `.env` en deze config in `openclaw.json`:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "memorySearch": {
+        "enabled": true,
+        "provider": "gemini"
+      }
+    }
+  }
+}
+```
+
+> **Belangrijk:** Configureer `memorySearch` onder `agents.defaults`, **niet** als top-level `memory.search` key — dat is een onbekende key in openclaw 2.x en laat de gateway crashen.
+
+---
+
+### Multi-project gateways — wanneer aanmaken?
+
+**Maak een nieuw project aan wanneer:**
+
+- Je twee of meer **fundamenteel verschillende domeinen** beheert (content schrijven vs. administratie)
+- Je wil dat agents **nooit context delen** tussen projecten
+- Je projecten onafhankelijk wil kunnen **herstarten, debuggen of uitschakelen**
+- Één project veel zwaardere workloads heeft dan een ander
+
+**Niet nodig wanneer:**
+- Je meerdere taken binnen hetzelfde domein uitvoert (vijf verschillende soorten artikelen schrijven)
+- Je agents onderling samenwerken aan één eindresultaat
+- Je net begint — start met één gateway en splits later
+
+**Voorbeeld waarbij projectisolatie cruciaal is:**
+
+```
+Zonder isolatie:
+  Schrijver-agent ontvangt vraag: "schrijf een artikel over duurzaamheid"
+  → Laadt ook context: klantfacturen, BTW-tarieven, contactgegevens
+  → Hoge tokenkosten, kans op informatie-lekken, verward antwoord
+
+Met isolatie:
+  Project "content" gateway (:18790):
+    → Laadt alleen: schrijfstijl, contentarchief, onderzoeksnotities
+  Project "admin" gateway (:18791):
+    → Laadt alleen: klantdata, factuurformaten, BTW-regels
+  Orchestrator (:18789):
+    → Weet van beide projecten, stuurt taakopdracht door zonder context mee te sturen
+```
+
+---
+
+### Implementatiestappen
+
+De volledige implementatie is uitgewerkt in **[PRD-v2-orchestrator-memory.md](PRD-v2-orchestrator-memory.md)** met 6 fases, acceptatiecriteria en exacte commando's. Samenvatting:
+
+**Fase 1 — Memory Folders** *(15 min)*
+```bash
+mkdir -p .openclaw/workspace/memory/{projects,preferences}
+touch .openclaw/workspace/memory/projects/{goals,decisions}.md
+touch .openclaw/workspace/memory/preferences/{writing-style,tools}.md
+# Voeg Memory Update Protocol toe aan AGENTS.md
+```
+
+**Fase 2 — Facts DB** *(10 min, via Claude in VM)*
+```
+Maak facts.db aan in .openclaw/workspace/memory/ met tabellen:
+research_facts (id, topic, fact, source, confidence, created_at)
+content_pieces (id, title, type, status, path, created_at, agent)
+```
+
+**Fase 3 — Extractie-cron** *(5 min)*
+Voeg een cron job toe aan `jobs.json` die elke avond om 23:00 sessie-logs leest en `memory/YYYY-MM-DD.md` schrijft.
+
+**Fase 4 — Native Memory Search** *(5 min)*
+Voeg embedding API key toe aan `.env` en `memorySearch` config toe aan `openclaw.json` onder `agents.defaults`.
+
+**Fase 5 — Project Gateway** *(30 min, vereist VM rebuild)*
+Voeg `systemd.services.openclaw-gateway-project-a` toe aan `flake.nix` met eigen `stateDir` en poort.
+
+**Fase 6 — MEM0 Plugin** *(optioneel)*
+Installeer de `mem0-openclaw-mem0` plugin via de Openclaw marketplace voor volledig automatische conversatie-memory injectie.
+
+---
+
+### Context-isolatie in de praktijk
+
+De orchestrator delegeert taken naar project-gateways met **minimale context** — alleen de taakomschrijving, het gewenste output-formaat, en het doelkanaal. Nooit project-specifieke bestanden of eerdere gesprekken:
+
+```
+Orchestrator stuurt naar Project-A:
+  ✓ "Schrijf een artikel over zonnepanelen, max 800 woorden, voor #articles kanaal"
+  ✗ Klantdata uit project B
+  ✗ Gesprekslogs van de afgelopen week
+  ✗ Memory bestanden van andere projecten
+```
+
+Dit betekent dat een herstart van Project-A's gateway nooit invloed heeft op de orchestrator of Project-B.
+
+---
+
+A fully local Next.js dashboard running inside the VM, accessible from your host browser at `http://10.0.1.2:3333`. No cloud, no external services — everything streams directly from Openclaw gateways over WebSocket and SSE.
 
 ```
 Host browser  →  http://10.0.1.2:3333
                       │
               Next.js (in VM, port 3333)
                       │  WebSocket + SSE
-              openclaw-gateway (port 18789)
-                      │
-              coordinator / writer / researcher / editor
+              ┌────────────────────────┐
+              │ Orchestrator  :18789   │
+              │ Project-A     :18790   │  ← switchable via Projects tab
+              └────────────────────────┘
 ```
 
-The dashboard has five tabs, each auto-refreshing from live gateway events:
+The dashboard has **six tabs**, each auto-refreshing from live gateway events:
 
 ### Tab 1 — Dashboard
 
@@ -315,60 +462,79 @@ Real-time overview of everything happening right now:
 - **Live feed** — raw gateway push events streamed via SSE as they arrive
 - **Stats bar** — pending / running count and active session count at a glance
 
-Sessions and agents refresh every 5 minutes via polling. The live feed updates instantly via SSE — no polling.
+Sessions and agents refresh every 5 minutes. The live feed updates instantly via SSE.
 
 ### Tab 2 — 🏢 Office (Pixel Art)
 
-A 2D pixel art simulation of your agent team rendered on an HTML5 Canvas. Characters react to live gateway events in real time:
+A 2D pixel art simulation rendered on an HTML5 Canvas. Characters react to live gateway events in real time:
 
 | Agent state | Trigger | Animation |
 |---|---|---|
 | Walking to desk | `agent lifecycle: phase=start` | Character moves toward its assigned desk |
-| Typing at desk | Arrived at desk | Hands-on-keyboard animation, green status dot |
-| Speech bubble | `chat delta` event | What the agent is currently writing appears above its head |
-| Walking to pool | `agent lifecycle: phase=end` | Character moves to the swimming pool to rest |
-| Resting at pool | At pool | Floating arm animation, blue status dot |
-| Error flash | `agent lifecycle: phase=error` | Red `!` above head, 3-second error state |
-| Idle wandering | No active session | Character roams slowly between zones |
+| Typing at desk | Arrived at desk | Hands-on-keyboard animation, green dot |
+| Speech bubble | `chat delta` event | What the agent is writing appears above its head |
+| Walking to pool | `agent lifecycle: phase=end` | Character moves to pool to rest |
+| Resting | At pool | Floating arm animation, blue dot |
+| Error | `phase=error` | Red `!` above head, 3-second error state |
+| Idle wandering | No active session | Character roams between zones |
 
-Each agent has a fixed desk, a shared meeting table, and a shared swimming pool. The status bar at the top always shows the current state of every agent.
+**Gateway selector** — switch between Orchestrator and Project-A in the top bar. Each gateway shows its own agents with dynamic desk positions. Switching reconnects the SSE feed to the selected gateway. Offline gateways show a warning banner.
 
-### Tab 3 — Calendar (Scheduled Tasks)
+### Tab 3 — Projects
 
-Visual weekly calendar for all Openclaw cron jobs stored in `~/.openclaw/cron/jobs.json`:
+Overview of all configured gateways:
 
-- **Always Running** section — interval-based jobs (`kind: "every"`) shown as permanent badges
-- **Weekly grid** — cron jobs plotted on the correct days based on the weekday field of the cron expression (`0 9 * * 1-5` → Mon–Fri)
-- **Today highlight** — current day column is highlighted in red
-- **Job detail modal** — click any job to see: agent, schedule expression, timezone, next/last run time, error count, and full prompt
-- **Enable/disable toggle** and **delete** from the modal
-- **New schedule form** — create a cron or interval job with agent, expression, timezone, prompt, and timeout
+- **Gateway cards** — Orchestrator and all project gateways with live online/offline status (TCP port check every 30s)
+- **Agent grid** — which agents exist per gateway, with their assigned color
+- **Stats** — session count, port, stateDir path
+- **Memory status** — shows whether memory folders and facts.db are present per gateway
+- **Registry** — add new gateways by editing `.openclaw/workspace/projects.json` — no code changes needed
 
-Schedules are read and written directly from `jobs.json`. The Openclaw gateway picks up changes on restart.
+### Tab 4 — Calendar (Scheduled Tasks)
 
-### Tab 4 — Memory
+Visual weekly calendar for all cron jobs in `~/.openclaw/cron/jobs.json`:
 
-Browse the full conversation history of all agents, grouped by day:
+- **Always Running** section — interval-based jobs (`kind: "every"`) as permanent badges
+- **Weekly grid** — cron jobs plotted on the correct weekdays
+- **Today highlight** — current day in red
+- **Job detail modal** — agent, schedule, timezone, next/last run, error count, full prompt
+- **Enable/disable** and **delete** from the modal
+- **New schedule form** — create cron or interval jobs directly from the browser
 
-- **Long-term memory section** — workspace Markdown files (`SOUL.md`, `USER.md`, `IDENTITY.md`, `HEARTBEAT.md`) shown per agent with word count and last-updated timestamp
-- **Daily journal** — all sessions across all agents grouped by date, newest first, with total size per day
-- **Day view** — click a day to see all sessions that ran that day, per agent, with start time and file size
-- **Conversation view** — click a session to see the full chat rendered as a conversation: user messages on the right, assistant on the left, timestamps on each message
-- **Search** — filter by agent name or date
+The daily memory extraction cron (`memory-extractor`, runs 23:00) appears here automatically.
 
-Memory is read directly from `~/.openclaw/agents/{agent}/sessions/*.jsonl` — one file per conversation, date extracted from the first line.
+### Tab 5 — Memory
 
-### Tab 5 — Docs
+Three-panel memory viewer covering all four hybrid memory methods:
+
+**🧠 Memory tab:**
+- **Identity files** — `SOUL.md`, `USER.md`, `IDENTITY.md`, `HEARTBEAT.md`, `AGENTS.md`, `MEMORY.md` per agent with word count
+- **Memory Folders** — collapsible categories: 🎯 Projects (`goals.md`, `decisions.md`), 🎨 Preferences (`writing-style.md`, `tools.md`), 📅 Daily Notes (auto-extracted by the 23:00 cron)
+- Empty files show a placeholder — agents fill them as they work
+
+**🗃 Facts tab:**
+- **Research Facts** — browse all facts in `memory/facts.db` with topic filter chips, confidence badges (high/medium/low), and full-text search
+- **Content Pieces** — all tracked content items with status (draft/review/published) and agent
+- Searchable, filterable, live from SQLite via Python
+
+**🗓 Journal tab:**
+- All agent sessions grouped by date, newest first
+- Days with an extracted memory note show ✅ badge and "extracted" label
+- Green "Last extraction: YYYY-MM-DD" banner when extraction cron has run
+- Click a day → see all sessions; click a session → full conversation view
+
+**Global search** — type in the search bar (min. 2 chars) to search across all memory sources simultaneously: identity files, memory folders, facts DB, and daily notes. Results show source type, snippet with match highlighted in yellow, and click-to-open.
+
+### Tab 6 — Docs
 
 Document viewer for all files the agents have created:
 
-- **Category filter chips** — filter by `articles`, `newsletters`, `research`, `scripts`, or `other`
-- **Full-text search** — searches title, slug, agent name, and date
-- **File list** — sorted by date descending, with category badge, file size, and word count
-- **Rendered markdown** — right panel renders the document with headers, bold, lists, code, and blockquotes
-- **File header** — shows filename, category, size, word count, creation date, and which agent wrote it
+- **Category filter chips** — `articles`, `newsletters`, `research`, `scripts`, `other`
+- **Full-text search** — title, slug, agent, date
+- **File list** — sorted by date, with category badge, size, word count
+- **Rendered markdown** — headers, bold, lists, code, blockquotes
 
-All agents save output to `~/workspace/content/{category}/YYYY-MM-DD_{agent}_{slug}.md`. This convention is configured in each agent's `AGENTS.md` workspace instructions.
+Agents save output to `~/workspace/content/{category}/YYYY-MM-DD_{agent}_{slug}.md`.
 
 ---
 
@@ -582,31 +748,53 @@ sudo systemctl restart systemd-networkd
 
 ```
 openclaw-sandbox/
-├── flake.nix                  # Complete VM definition
-├── flake.lock                 # Pinned dependency versions
-├── setup-network.sh           # Host network setup (vmtap1 + NAT)
-├── build-plugin-overlay.sh    # Rebuild plugin overlay after nix build upgrades
-├── nix-store-rw.img           # Writable ext4 overlay for /nix/store in VM
-├── README.md                  # This file
-└── OPENCLAW-SETUP.md          # Openclaw + Discord + multi-agent setup guide
+├── flake.nix                     # Complete VM definition (gateways, dashboard, firewall)
+├── flake.lock                    # Pinned dependency versions
+├── setup-network.sh              # Host network setup (vmtap1 + NAT)
+├── build-plugin-overlay.sh       # Rebuild plugin overlay after nix build upgrades
+├── nix-store-rw.img              # Writable ext4 overlay for /nix/store in VM
+├── README.md                     # This file
+├── OPENCLAW-SETUP.md             # Openclaw + Discord + multi-agent setup guide
+└── PRD-v2-orchestrator-memory.md # Full PRD: multi-project + hybrid memory (6 phases)
 
-~/openclaw-workspace/          # Persistent state (virtiofs, survives VM reboots)
-├── .claude/                   # Claude Code auth
-├── .npm-global/               # Global npm packages incl. claude binary
-├── .claude.json               # Claude Code session (symlinked into VM)
-├── .env                       # Secrets: Discord token, config paths
-├── .openclaw/                 # Openclaw gateway state
-│   ├── agents/main/agent/
-│   │   └── auth-profiles.json # Anthropic OAuth token (required for AI responses)
+~/openclaw-workspace/             # Persistent state (virtiofs, survives VM reboots)
+├── .claude/                      # Claude Code auth
+├── .npm-global/                  # Global npm packages incl. claude binary
+├── .env                          # Secrets: Discord token, API keys (Gemini/OpenAI)
+├── .openclaw/                    # Orchestrator gateway state (port 18789)
+│   ├── agents/*/sessions/        # JSONL session logs per agent
+│   ├── cron/jobs.json            # Scheduled tasks incl. memory-extractor (23:00)
 │   └── workspace/
-│       └── AGENTS.md          # Coordinator instructions: always use thread: true
-├── .openclaw-bundled-plugins/ # Plugin overlay (74 plugins, workaround for Nix)
-├── content/                   # Agent output — files written by the pipeline
-└── dashboard/                 # Mission Control web dashboard (Next.js)
-    ├── src/app/api/feed/      # SSE stream — gateway push events → browser
-    ├── src/app/api/agents/    # REST — agents.list
-    ├── src/app/api/sessions/  # REST — sessions.list
-    └── src/lib/gateway.ts     # Gateway WebSocket client (challenge-response)
+│       ├── SOUL.md / USER.md / IDENTITY.md / AGENTS.md
+│       ├── MEMORY.md             # Curated long-term memory
+│       ├── projects.json         # Gateway registry for Mission Control
+│       └── memory/               # Hybrid memory store
+│           ├── YYYY-MM-DD.md     # Daily extraction notes (auto-generated)
+│           ├── projects/
+│           │   ├── goals.md
+│           │   └── decisions.md
+│           ├── preferences/
+│           │   ├── writing-style.md
+│           │   └── tools.md
+│           └── facts.db          # SQLite: research_facts + content_pieces
+├── project-a/                    # Project-A gateway (port 18790)
+│   └── .openclaw/
+│       ├── openclaw.json         # coordinator-a config, port 18790
+│       └── workspace/
+│           ├── SOUL.md / USER.md
+│           └── memory/           # Isolated memory — never mixed with orchestrator
+├── .openclaw-bundled-plugins/    # Plugin overlay (74 plugins, workaround for Nix)
+├── content/                      # Agent output — files written by the pipeline
+└── dashboard/                    # Mission Control (Next.js, port 3333)
+    ├── src/app/                  # Pages: / /office /projects /schedules /memory /docs
+    ├── src/app/api/feed/         # SSE stream with ?port= gateway selector
+    ├── src/app/api/projects/     # Gateway registry + live TCP port checks
+    ├── src/app/api/memory/       # Sessions, markdown files, folder browser
+    ├── src/app/api/memory/facts/ # SQLite facts.db via Python sqlite3
+    ├── src/app/api/memory/search/# Full-text search across all memory sources
+    ├── src/app/api/schedules/    # CRUD for cron jobs.json
+    ├── src/app/api/docs/         # Content file browser
+    └── src/lib/gateway.ts        # WebSocket client (challenge-response protocol)
 ```
 
 ---
@@ -695,6 +883,32 @@ See [OPENCLAW-SETUP.md — Stap 9](OPENCLAW-SETUP.md) for the full protocol and 
 <summary>Dashboard agents/sessions panel shows 0 items despite 200 OK</summary>
 
 The gateway wraps list results in an object: `agents.list` returns `{ agents: [...], defaultId, ... }` and `sessions.list` returns `{ sessions: [...], count, ... }`. The API routes must extract the nested array, not return the wrapper object directly.
+
+</details>
+
+<details>
+<summary>Gateway crashes with "Unrecognized key: search" after adding memory config</summary>
+
+The `memory.search` key at the top level of `openclaw.json` is not supported in openclaw 2.x. Configure memory search under `agents.defaults` instead:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "memorySearch": {
+        "enabled": true,
+        "provider": "gemini"
+      }
+    }
+  }
+}
+```
+
+If the gateway is already in a crash loop, run `openclaw doctor --fix` inside the VM to remove invalid keys, then restart:
+```bash
+cd /home/agent/workspace/.openclaw && openclaw doctor --fix
+sudo systemctl restart openclaw-gateway
+```
 
 </details>
 
