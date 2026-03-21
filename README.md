@@ -960,9 +960,9 @@ Elke agent heeft zijn eigen `workspace-{id}/AGENTS.md` met alleen de instructies
 
 ---
 
-#### Laag 7 — Heartbeat model & interval (geconfigureerd ✅)
+#### Laag 7 — Heartbeat model & interval (niet ondersteund in v2026.3.14)
 
-Heartbeats worden standaard op het primaire model (Sonnet) uitgevoerd. Met `agents.defaults.heartbeat` stuur je ze naar Haiku:
+`agents.defaults.heartbeat` veroorzaakt een gateway crashloop in de huidige versie — de config-key wordt als invalid beschouwd. Er staan meerdere open issues voor in de OpenClaw repo (#43728, #47940, #49452). Zodra dit gefixed is, is de gewenste config:
 
 ```json
 "agents": {
@@ -976,9 +976,9 @@ Heartbeats worden standaard op het primaire model (Sonnet) uitgevoerd. Met `agen
 ```
 
 - `model: haiku` — 4× goedkoper per heartbeat-trigger
-- `intervalMinutes: 28` — in de huidige versie (2026.3.14) is het effectieve interval 2× de geconfigureerde waarde (bekend issue #47940), dus 28 min → ~56 min effectief. Dit houdt de Anthropic prompt-cache warm (TTL ~55 min) terwijl je minimale triggers hebt.
+- `intervalMinutes: 28` — effectief interval is 2× geconfigureerd (bekend bug #47940), dus 28 → ~56 min om cache warm te houden
 
-> **Let op:** heartbeat-stabiliteit heeft meerdere open bugs in v2026.3.8+. Monitor via Mission Control Live Feed of triggers daadwerkelijk plaatsvinden.
+> **Niet toepassen totdat OpenClaw heartbeat-config valideert zonder crash.**
 
 #### Laag 8 — Cron frequentie (geconfigureerd ✅)
 
