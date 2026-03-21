@@ -799,6 +799,177 @@ openclaw-sandbox/
 
 ---
 
+## Model Optimalisatie & Token Efficiency
+
+Dit systeem is geconfigureerd voor kostenefficiëntie op vier lagen: model tiering, prompt caching, compaction en toekomstige context-reductie via mem0. Deze sectie legt uit waarom dat nodig is, hoe het werkt, en welke keuzes er zijn gemaakt.
+
+---
+
+### Hoe tokens werken bij elke agent-aanroep
+
+Elke keer dat een agent een bericht verwerkt, stuurt OpenClaw drie categorieën tokens naar de Anthropic API:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Elke agent-beurt bestaat uit:                                      │
+│                                                                     │
+│  ┌─────────────────────────────────────────────┐                   │
+│  │  SYSTEEM-PROMPT (vaste overhead per agent)  │  ← gecached ✅    │
+│  │  SOUL.md + AGENTS.md + BOOTSTRAP.md         │                   │
+│  │  Typisch: 5.000 – 50.000 tokens             │                   │
+│  ├─────────────────────────────────────────────┤                   │
+│  │  CONVERSATION HISTORY (groeit per sessie)   │  ← gecached ✅    │
+│  │  Alle vorige berichten in deze sessie        │                   │
+│  │  Kan groeien naar 100.000+ tokens            │                   │
+│  ├─────────────────────────────────────────────┤                   │
+│  │  NIEUW BERICHT (vers, elke beurt klein)      │  ← vers, betaald │
+│  │  Jouw vraag of de nieuwe taak                │                   │
+│  │  Typisch: 50 – 500 tokens                    │                   │
+│  └─────────────────────────────────────────────┘                   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Praktisch voorbeeld** (zoals zichtbaar in de Mission Control Token Efficiency widget):
+
+| Categorie | Tokens | Kosten (Sonnet) | Zonder cache |
+|---|---|---|---|
+| Input (vers) | 216 | $0.0006 | $0.0006 |
+| Output | 9.600 | $0.1440 | $0.1440 |
+| Cache read | 920.200 | $0.2761 | **$2.7606** |
+| **Totaal** | | **$0.4207** | **$2.9052** |
+| **Cache besparing** | | | **$2.49 (85%)** |
+
+> **Cache hit rate 100%** betekent: bijna alle verwerkte tokens waren al gecached bij Anthropic. Alleen de nieuwe berichten worden vers betaald. Dit is automatisch actief via de Anthropic API — geen configuratie nodig.
+
+---
+
+### Prompt caching: automatisch, maar niet gratis
+
+Anthropic's prompt caching slaat de eerste N tokens van een context op na de eerste aanroep. Daarna betaal je:
+
+| Categorie | Prijs | Verhouding |
+|---|---|---|
+| Input (vers) | $3,00 / 1M tokens | 1× |
+| Cache write | $3,75 / 1M tokens | 1,25× (eenmalig) |
+| Cache read | $0,30 / 1M tokens | **10× goedkoper** |
+| Output | $15,00 / 1M tokens | — |
+
+Cache vervalt na ~5 minuten inactiviteit. Bij actieve sessies blijft de cache warm en profiteer je bij elke beurt. Bij cron jobs die elk uur draaien is de cache soms verlopen — die eerste beurt kost meer.
+
+---
+
+### Het groeiprobeem: conversation history
+
+De systeem-prompt is stabiel. Maar de **conversation history** groeit elke sessie:
+
+```
+Sessie 1 (begin):    systeem 20k + history 0k   + bericht 0.2k  = 20.2k tokens
+Sessie 50 (midden):  systeem 20k + history 80k  + bericht 0.2k  = 100.2k tokens
+Sessie 200 (lang):   systeem 20k + history 300k + bericht 0.2k  = 320.2k tokens
+```
+
+Bij lange sessies betaal je cache-prijs over 300k+ tokens per beurt. Zonder oplossing groeit dit onbeperkt totdat de context overloopt.
+
+**Huidige mitigatie:** `compaction.mode = safeguard` — OpenClaw comprimeert de history automatisch wanneer de context-limiet nadert. Dit voorkomt overflow maar lost het groeiprobeem niet fundamenteel op.
+
+---
+
+### Vier optimalisatielagen (geïmplementeerd)
+
+#### Laag 1 — Prompt caching (automatisch ✅)
+Altijd actief. Geen configuratie. Levert 85%+ kostenbesparing op de vaste overhead.
+
+#### Laag 2 — Model tiering (geconfigureerd ✅)
+
+Niet elke taak vereist het duurste model. De agent-tier mapping:
+
+| Agent | Model | Tier | Gebruik | Kosten vs Sonnet |
+|---|---|---|---|---|
+| `coordinator` | claude-sonnet-4-6 | 3 | Orchestratie, planning, complexe redenering | 1× |
+| `writer` | claude-sonnet-4-6 | 3 | Artikelen, creatief schrijven | 1× |
+| `researcher` | claude-sonnet-4-6 | 3 | Multi-stap research, bronanalyse | 1× |
+| `editor` | claude-haiku-4-5 | 2 | Formatteren, korte edits | **~4× goedkoper** |
+| `memory-agent` | claude-haiku-4-5 | 2 | Extractie, memory schrijven, cron-taken | **~4× goedkoper** |
+| `escalation-agent` | claude-opus-4-6 | 4 | Alleen bij expliciete escalatie | 5× duurder |
+
+De coordinator instrueert welke subagent een taak uitvoert. Simpele taken gaan naar Haiku (editor/memory-agent), complexe taken naar Sonnet (writer/researcher), onoplosbare taken naar Opus.
+
+#### Laag 3 — Compaction (geconfigureerd ✅)
+
+```json
+"agents": {
+  "defaults": { "compaction": { "mode": "safeguard" } },
+  "memory-agent": { "compaction": { "mode": "default" } }
+}
+```
+
+`safeguard` comprimeert alleen bij dreigende overflow — veiligste optie. `default` (voor memory-agent) comprimeert agressiever omdat memory-taken nooit diepe history nodig hebben.
+
+#### Laag 4 — Dedicated agents per domein ✅
+
+**Dit is de kern van het multi-agent ontwerp.** Eén grote coordinator met alles in zijn context is duurder en trager dan meerdere agents met kleinere, gefocuste contexten:
+
+```
+❌ Monolithisch (duur):
+   Coordinator weet alles: research + schrijven + geheugen + planning
+   → 1 agent, 300k+ context, Sonnet-prijs voor alles
+
+✅ Multi-agent (efficiënt):
+   Coordinator: orchestreert alleen (20k context)
+   Writer:      schrijft alleen, eigen kleine AGENTS.md
+   Researcher:  zoekt alleen, eigen kleine AGENTS.md
+   Memory-agent: memory-taken op Haiku (4× goedkoper)
+```
+
+Elke agent heeft zijn eigen `workspace-{id}/AGENTS.md` met alleen de instructies die relevant zijn voor zijn taak. De overhead per agent is kleiner dan die van één alleskunner.
+
+---
+
+### Toekomstige optimalisaties
+
+| Oplossing | Wat het doet | Status |
+|---|---|---|
+| **Mem0 / native search** | Vervangt groeiende conversation history door gerichte retrieval | Configureerbaar (zie Memory sectie) |
+| **Kortere identity files** | Kleinere SOUL.md / AGENTS.md = minder vaste overhead per sessie | Handmatig |
+| **Ollama Tier 1** | Lokaal model voor classificatie/routing — geen API-kosten | Toekomstig (PRD-v3) |
+| **Shared KV-cache** | Anthropic werkt aan cache die tussen sessies blijft leven | Roadmap Anthropic |
+| **Context distillation** | Agent vat zichzelf samen na elke sessie (uitbreiding op compaction) | Toekomstig |
+
+**Wanneer mem0 helpt:** zodra je merkt dat de cache read tokens per sessie blijven groeien (zichtbaar in Mission Control Token Efficiency), is mem0 de volgende stap. In plaats van de volledige conversation history te cachen, haalt de agent alleen relevante facts op via `memory_search`. Dit houdt de context klein, ook na honderden sessies.
+
+---
+
+### Token Efficiency monitoren
+
+De **Mission Control Dashboard** toont real-time tokenverbruik:
+
+- **Cache hit rate** — percentage van alle verwerkte tokens dat gecached was
+- **Input / Output / Cache** — absolute aantallen per periode
+- **Per-agent breakdown** — welke agent hoeveel verbruikt, met model-badge
+- **Est. cost** — geschatte kosten gebaseerd op Anthropic's prijzen
+
+```
+┌─────────────────────────────────────────────┐
+│  Token Efficiency (7d)                       │
+│                                              │
+│  Cache hit rate  ████████████████████ 100%  │
+│                                              │
+│  Input    Output    Cache                    │
+│  216      9.6k      920.2k                  │
+│                                              │
+│  Est. cost (7d)              $0.4282         │
+│                                              │
+│  coordinator  in:209  out:8.7k  cache:905k  S4.6 │
+│  researcher   in:4    out:687   cache:15.6k S4.6 │
+│  editor       in:0    out:0     cache:0     H4.5 │
+│  memory-agent in:0    out:0     cache:0     H4.5 │
+└─────────────────────────────────────────────┘
+```
+
+Als editor en memory-agent taken uitvoeren zie je hun Haiku-tokens verschijnen — significant goedkoper dan dezelfde taken op de coordinator.
+
+---
+
 ## Troubleshooting
 
 <details>
