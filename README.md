@@ -960,7 +960,27 @@ Elke agent heeft zijn eigen `workspace-{id}/AGENTS.md` met alleen de instructies
 
 ---
 
-#### Laag 7 — Cron frequentie (geconfigureerd ✅)
+#### Laag 7 — Heartbeat model & interval (geconfigureerd ✅)
+
+Heartbeats worden standaard op het primaire model (Sonnet) uitgevoerd. Met `agents.defaults.heartbeat` stuur je ze naar Haiku:
+
+```json
+"agents": {
+  "defaults": {
+    "heartbeat": {
+      "intervalMinutes": 28,
+      "model": "anthropic/claude-haiku-4-5-20251001"
+    }
+  }
+}
+```
+
+- `model: haiku` — 4× goedkoper per heartbeat-trigger
+- `intervalMinutes: 28` — in de huidige versie (2026.3.14) is het effectieve interval 2× de geconfigureerde waarde (bekend issue #47940), dus 28 min → ~56 min effectief. Dit houdt de Anthropic prompt-cache warm (TTL ~55 min) terwijl je minimale triggers hebt.
+
+> **Let op:** heartbeat-stabiliteit heeft meerdere open bugs in v2026.3.8+. Monitor via Mission Control Live Feed of triggers daadwerkelijk plaatsvinden.
+
+#### Laag 8 — Cron frequentie (geconfigureerd ✅)
 
 Elke cron trigger start een nieuwe sessie met volledige context-injectie. Hoge frequentie = directe kostenvermeerdering.
 
@@ -968,7 +988,7 @@ Elke cron trigger start een nieuwe sessie met volledige context-injectie. Hoge f
 |---|---|---|---|
 | `task-checker` | elke 5 min | elke 60 min | 288 → **24** (12× minder) |
 
-De `elk-uur-statuscheck` en `dagelijkse-briefing` waren al op verstandige intervallen. De heartbeat-interval is niet configureerbaar in OpenClaw 2026.3.14 — dat is een gateway-intern mechanisme zonder config-exposure.
+De `elk-uur-statuscheck` en `dagelijkse-briefing` waren al op verstandige intervallen.
 
 ---
 
