@@ -157,18 +157,29 @@
           # Tweede gateway voor project-isolatie. Eigen openclaw.json,
           # eigen workspace, eigen memory. Orchestrator (18789) routeert
           # taakopdrachten door naar project-a via het delegatie-protocol.
-          services.openclaw-gateway-project-a = {
-            enable       = true;
-            package      = pkgs.openclaw;
-            user         = "agent";
-            group        = "agent";
-            createUser   = false;
-            stateDir     = "/home/agent/workspace/project-a/.openclaw";
-            port         = 18790;
-            environmentFiles = [ "/home/agent/workspace/.env" ];
-            restart      = "always";
-            logPath      = "/tmp/openclaw-project-a.log";
-            config.gateway.mode = "local";
+          # Gebruikt raw systemd service — nix-openclaw module ondersteunt
+          # geen meerdere instanties via services.openclaw-gateway-*.
+          systemd.services.openclaw-gateway-project-a = {
+            description = "Openclaw Gateway — Project-A (poort 18790)";
+            after       = [ "network.target" ];
+            wantedBy    = [ "multi-user.target" ];
+            environment = {
+              OPENCLAW_STATE_DIR    = "/home/agent/workspace/project-a/.openclaw";
+              CLAWDBOT_STATE_DIR    = "/home/agent/workspace/project-a/.openclaw";
+              OPENCLAW_CONFIG_PATH  = "/home/agent/workspace/project-a/.openclaw/openclaw.json";
+              CLAWDBOT_CONFIG_PATH  = "/home/agent/workspace/project-a/.openclaw/openclaw.json";
+            };
+            serviceConfig = {
+              User             = "agent";
+              WorkingDirectory = "/home/agent/workspace/project-a/.openclaw";
+              ExecStart        = "${pkgs.openclaw}/bin/openclaw gateway --port 18790";
+              Restart          = "always";
+              RestartSec       = "5s";
+              StandardOutput   = "journal";
+              StandardError    = "journal";
+              SyslogIdentifier = "openclaw-project-a";
+              EnvironmentFile  = "/home/agent/workspace/.env";
+            };
           };
 
           # ── Mission Control dashboard (poort 3333) ─────────────
