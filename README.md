@@ -1526,6 +1526,52 @@ Yes. They use different subnets (nanoclaw: `10.0.0.x`, openclaw: `10.0.1.x`), di
 
 ---
 
+## Support
+
+### Context7 MCP — Live OpenClaw Documentation in Claude Code
+
+When working in the VM's workspace directory, Claude Code has access to live, up-to-date OpenClaw documentation via [Context7](https://context7.com). This means you can ask questions about configuration, agents, channels, sandbox options, cron, and more — and get answers based on the current documentation, not stale training data.
+
+#### Setup (already included in this repo)
+
+Two files in `~/openclaw-workspace/` (mounted in the VM at `/home/agent/workspace/`) enable this:
+
+**`.mcp.json`** — registers Context7 as an MCP server for Claude Code:
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    }
+  }
+}
+```
+
+**`CLAUDE.md`** — instructs Claude Code to automatically use Context7 for OpenClaw questions. No need to type `use context7` manually.
+
+#### Usage
+
+Start Claude Code from the workspace directory in the VM:
+```bash
+cd /home/agent/workspace
+claude
+```
+
+Claude Code loads the `.mcp.json` from the current directory and Context7 becomes available. You can now ask questions like:
+
+- *"Wat zijn de beschikbare sandbox configuratie opties?"*
+- *"Hoe configureer ik een tweede agent met read-only tools?"*
+- *"Welke runtime opties zijn beschikbaar voor ACP agents?"*
+
+Context7 queries the official OpenClaw documentation in real time, so you always get answers based on the latest version — including recent fixes and new configuration options.
+
+#### Requirements
+
+Node.js must be available in the VM (it is — included via NixOS). `npx` downloads `@upstash/context7-mcp` on first use and caches it.
+
+---
+
 ## Related Projects
 
 | Project | Description |
