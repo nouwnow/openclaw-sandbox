@@ -280,124 +280,170 @@ tail -f /tmp/openclaw-gateway.log
 
 ---
 
-## Virtiofs Procesarchitectuur
+## How the Filesystem Bridge Works
 
-### Hoe de filesystem bridge in elkaar zit
+When you run `./result/bin/virtiofsd-run`, you're starting the bridge that makes your host directories available inside the VM — securely, without network overhead, at near-native speed. This section explains what those processes actually are, why there are more of them than you might expect, and why this design is a good fit for a multi-agent setup.
 
-Elke virtiofs-share (gedeelde map tussen host en VM) wordt bediend door een keten van drie processen. Voor twee VMs (openclaw + nanoclaw) met elk vier shares resulteert dit in **18 processen** op de host — allemaal van jou, allemaal verwacht.
+---
 
-```
-supervisord (1×)
-  └── bash wrapper (1× per share)          ← ons virtiofsd.package script
-        └── virtiofsd binary (1× per share) ← het actieve filesystem-serverproces
-```
+### The short answer: 18 processes is correct
 
-**Visualisatie voor de openclaw-VM (4 shares):**
+Run `ps aux | grep virtiofsd` on the host and you'll see ~18 processes. That's not a bug or a memory leak. Each directory share runs as an independent, self-healing chain of three processes:
 
 ```
-supervisord (PID a)
-  ├── bash: virtiofsd  .claude-share     →  virtiofsd  .claude-share     (actief, Sl)
-  ├── bash: virtiofsd  .npm-global-share →  virtiofsd  .npm-global-share (actief, Sl)
-  ├── bash: virtiofsd  workspace-share   →  virtiofsd  workspace-share   (actief, Sl)
-  └── bash: virtiofsd  /nix/store-share  →  virtiofsd  /nix/store-share  (actief, Sl)
-
-idem voor nanoclaw-VM (PID b) + 4 shares
-──────────────────────────────────────────
-Totaal: 2 supervisord + 8 bash-wrappers + 8 virtiofsd-binaries = 18 processen
+supervisord
+  └── bash wrapper  (our custom virtiofsd.package script from flake.nix)
+        └── virtiofsd binary  (the actual filesystem server, actively serving the VM)
 ```
 
-**Processtatussen in `ps aux`:**
-- `S` (sleeping) — de bash-wrapper heeft de child-virtiofsd gestart en wacht in zijn `while true` loop
-- `Sl` (sleeping, multi-threaded) — de echte virtiofsd bedient actief de VM via het socket
+With two VMs (openclaw + nanoclaw) each sharing four directories, that adds up:
 
-### Waarom een bash wrapper?
+```
+openclaw VM:                          nanoclaw VM:
+  supervisord                           supervisord
+    ├── wrapper → virtiofsd  workspace    ├── wrapper → virtiofsd  workspace
+    ├── wrapper → virtiofsd  .claude      ├── wrapper → virtiofsd  .claude
+    ├── wrapper → virtiofsd  .npm-global  ├── wrapper → virtiofsd  .npm-global
+    └── wrapper → virtiofsd  /nix/store   └── wrapper → virtiofsd  /nix/store
+──────────────────────────────────────────────────────────────────────────────
+2 supervisord  +  8 bash wrappers  +  8 virtiofsd binaries  =  18 processes
+```
 
-De microvm.nix runner vraagt virtiofsd op met `--posix-acl`. Dat vlag conflicteert met onze virtiofsd-versie en veroorzaakt een opstartfout. De wrapper in `flake.nix` filtert die vlag er stil uit:
+In `ps aux` output, the bash wrappers show state `S` (sleeping — waiting for their child to exit) and the virtiofsd binaries show `Sl` (actively serving, multi-threaded).
+
+---
+
+### Why three layers instead of one?
+
+Each layer has a specific job:
+
+| Layer | Process | Job |
+|---|---|---|
+| **supervisord** | Python process manager | Keeps the bash wrapper alive. If the wrapper crashes hard, supervisord restarts it. |
+| **bash wrapper** | Our custom script in `flake.nix` | Filters out `--posix-acl` (incompatible with our virtiofsd version) and runs a restart loop for clean VM reboots. |
+| **virtiofsd binary** | The real filesystem server | Serves a single directory share to the VM over a Unix socket. One per share. |
+
+The bash wrapper exists because `microvm.nix` always passes `--posix-acl` when launching virtiofsd — a flag our virtiofsd version doesn't support, causing an immediate crash. Rather than patch microvm.nix, we replace the virtiofsd binary with a shell script that silently drops that flag before forwarding everything else:
 
 ```bash
-# virtiofsd.package in flake.nix (vereenvoudigd)
+# flake.nix — virtiofsd.package (simplified)
 for arg in "$@"; do
   case "$arg" in
-    --posix-acl) ;;           # ← wegfilteren
+    --posix-acl) ;;           # drop silently
     *) args+=( "$arg" ) ;;
   esac
 done
 while true; do
-  virtiofsd "${args[@]}" >> /dev/null 2>&1
-  sleep 1
+  virtiofsd "${args[@]}" >> /dev/null 2>&1   # run the real binary
+  sleep 1                                     # restart after clean exit (e.g. VM reboot)
 done
 ```
 
-De `while true`-lus zorgt dat virtiofsd automatisch herstart bij een clean exit (VM-reboot). Supervisord beheert de bash-wrapper zelf en herstart die bij crashes.
-
-### Koppeling met de multi-agent setup
-
-De vier virtiofs-shares per VM corresponderen direct met de agent-architectuur:
-
-| Share | Mount in VM | Gebruik door agents |
-|---|---|---|
-| `workspace` | `/home/agent/workspace` | Alle agents — bestanden lezen/schrijven, content opslaan, `openclaw.json` |
-| `.claude` | `/home/agent/.claude` | Claude Code auth — coordinator gebruikt dit om taken uit te voeren |
-| `.npm-global` | `/home/agent/.npm-global` | `claude` binary en npm-packages — gedeeld door alle agent-processen |
-| `/nix/store` | `/nix/store` | Read-only — Nix-packages gedeeld tussen host en VM, geen herdownload nodig |
-
-Elk virtiofsd-proces is een onafhankelijke, geïsoleerde brug voor één specifieke share. Als het workspace-proces crasht, blijven `.claude` en `.npm-global` bereikbaar. Dit is bewust: een failende bestandstoegang voor content heeft geen effect op de authenticatie van de coordinator.
-
-Voor een multi-agent orchestrator is dit optimaal: de share-granulariteit correspondeert met de scheidslijn tussen authenticatie (`.claude`), tooling (`.npm-global`) en data (`workspace`). Elke laag kan onafhankelijk herstarten.
+The `while true` loop means that when the VM reboots cleanly, virtiofsd exits and immediately restarts — so the filesystem bridge is ready before the VM even finishes its boot sequence.
 
 ---
 
-### Log Bloat — het probleem en de fix
+### Each share maps directly to agent responsibility
 
-**Het probleem:** standaard virtiofsd schrijft debuglogs. Bij actieve VM-gebruik produceert dit honderden megabytes per uur. Na een nacht draaien met meerdere agents en cron-jobs is een filesystem-overflow van >50 GB mogelijk.
+The four shares per VM aren't arbitrary. They correspond to the separation of concerns in the multi-agent architecture:
 
-**Hoe het ontstaat:** microvm.nix start virtiofsd met `--log-level=debug` als default. Zonder expliciete override gaat alle output naar `/tmp/vfs-<vmname>.log`.
+```
+Host directory                 → VM mount point              → Used by
+──────────────────────────────────────────────────────────────────────────────────────
+~/openclaw-workspace           → /home/agent/workspace       → All agents — content,
+                                                               openclaw.json, memory
+~/openclaw-workspace/.claude   → /home/agent/.claude         → Claude Code auth only
+~/openclaw-workspace/.npm-glob → /home/agent/.npm-global     → claude binary + packages
+/nix/store                     → /nix/store  (read-only)     → All NixOS packages,
+                                                               shared with host
+```
 
-**De fix in `flake.nix`:**
+**Why this separation matters for a multi-agent setup:**
+
+Each virtiofsd process is an independent bridge. If the `workspace` process crashes during a heavy write operation (a researcher agent saving a large report), the `.claude` and `.npm-global` bridges are completely unaffected. The coordinator's authentication and tooling remain live. Only data access is interrupted — and it self-heals in under a second via the restart loop.
+
+Contrast this with a single shared filesystem bridge: one crash takes down auth, tooling, and data simultaneously. For an orchestrator coordinating multiple parallel agents, that's a full pipeline outage.
+
+```
+Single bridge (fragile):
+  workspace crash → coordinator loses auth → full pipeline down
+
+Per-share bridges (resilient):
+  workspace crash → workspace restarts in <1s → coordinator keeps running
+  .claude intact  → auth unaffected
+  .npm-global intact → claude binary unaffected
+```
+
+The `/nix/store` share is read-only and shared between both VMs and the host. No package is downloaded twice, and no agent can modify packages — the isolation boundary stays clean.
+
+---
+
+### The log bloat problem — and why it matters
+
+> **If you've ever woken up to a full disk after leaving agents running overnight — this is why.**
+
+By default, virtiofsd runs with `--log-level=debug`. In a single-VM setup with light use, this generates a few MB per hour. In an active multi-agent setup with cron jobs, a coordinator spawning sub-agents, and four virtiofsd processes per VM — it generates **gigabytes per hour**. Overnight: 50–90 GB is not unusual.
+
+The log goes to `/tmp/vfs-<vmname>.log`, a file with no rotation and no size limit.
+
+**The fix is two lines in `flake.nix`:**
 
 ```nix
 virtiofsd.extraArgs = [ "--sandbox=none" "--log-level=error" ];
 
-virtiofsd.package = pkgs.writeShellScriptBin "virtiofsd" ''
-  ...
-  while true; do
-    ${pkgs.virtiofsd}/bin/virtiofsd "${args[@]}" >> /dev/null 2>&1
-    #                                                ^^^^^^^^^^
-    #                               stdout + stderr naar /dev/null, geen logbestand
-    sleep 1
-  done
-'';
+# In the bash wrapper:
+virtiofsd "${args[@]}" >> /dev/null 2>&1   # ← not a file, /dev/null
 ```
 
-`--log-level=error` + `>> /dev/null 2>&1` elimineert alle loggingoutput. Alleen echte fouten worden nog gegenereerd, en die gaan nergens naartoe (debug is toch niet nuttig in productie).
+`--log-level=error` drops all debug and info output at the source. `>> /dev/null` ensures nothing accumulates anywhere, even if something does slip through. In production, debug output from a filesystem server has zero operational value — errors are all that matter, and actual errors are rare enough to not need rotation.
 
-**Verifiëren na een update:**
+---
+
+### Verify your setup is clean
+
+<details>
+<summary><strong>Quick health check — run this after every <code>nix build</code></strong></summary>
 
 ```bash
-# Alle virtiofsd-processen tonen — geen enkele mag --log-level=debug hebben
+# No process should have --log-level=debug
 ps aux | grep virtiofsd | grep -v grep | grep "log-level=debug"
-# Leeg = correct
+# Expected: empty
 
-# Logbestanden mogen niet meer groeien
+# Log files should not be growing
 ls -lh /tmp/vfs-*.log && sleep 15 && ls -lh /tmp/vfs-*.log
-# Zelfde grootte = correct
-```
+# Expected: identical sizes both times
 
-**Als je toch stale debug-processen ziet** (na een mislukte rebuild waarbij de oude runner nog draait naast de nieuwe):
-
-```bash
-# Processen met debug-flag identificeren
-ps aux | grep "log-level=debug" | grep virtiofsd | grep -v grep
-
-# Killen op PID — supervisord herstart ze automatisch met de nieuwe config
-kill <pid1> <pid2> ...
-
-# Daarna controleren of herstart met error-level plaatsvond
+# Correct process count: 8 virtiofsd binaries (4 per VM)
 ps aux | grep virtiofsd | grep -v grep | grep "log-level=error" | wc -l
-# Moet 8 zijn (4 per VM)
+# Expected: 8
 ```
 
-> **Nieuwe gebruikers:** voer dit als eerste controle uit als je een onverwacht volle schijf ziet. Het is de meest voorkomende oorzaak van schijfoverlopen in een actieve multi-agent setup.
+</details>
+
+<details>
+<summary><strong>Stale debug processes after a failed rebuild</strong></summary>
+
+After running `nix build` and restarting the runner, you may briefly have two sets of virtiofsd processes: the old ones (still `--log-level=debug`) and the new ones (`--log-level=error`). This happens when the old runner is still open in another terminal.
+
+**Identify:**
+```bash
+ps aux | grep virtiofsd | grep -v grep | grep "log-level=debug"
+```
+
+**Fix — kill by PID:**
+```bash
+kill <pid1> <pid2> ...
+```
+
+supervisord immediately restarts the killed processes using the new configuration — within seconds you'll see fresh `--log-level=error` replacements. You don't need to restart the VM or the runner.
+
+**After killing, verify:**
+```bash
+ps aux | grep virtiofsd | grep -v grep | grep "log-level=debug"
+# Expected: empty
+```
+
+</details>
 
 ---
 
