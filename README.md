@@ -75,7 +75,7 @@ Each sub-agent gets its own **Discord thread** — you watch the full pipeline l
 Host (Linux)
 └── NixOS MicroVM (cloud-hypervisor, 8GB RAM, 4 vCPU)
     ├── openclaw-gateway          (port 18789) ← orchestrator: coordinator + writer + researcher + editor
-    ├── openclaw-gateway-project-a (port 18790) ← project-a: coordinator-a (isolated workspace)
+    ├── openclaw-gateway-project-a (port 18790) ← project-a: coordinator-a (isolated workspace, geen Discord)
     ├── dashboard (Next.js)        (port 3333)  ← Mission Control web UI
     └── virtiofs mounts
         ├── /nix/store        → host Nix store (read-only)
@@ -136,7 +136,7 @@ echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
 sudo usermod -aG kvm $USER  # log out and back in
 
 # 4. Workspace
-mkdir -p ~/openclaw-workspace/{.claude,.npm-global,.openclaw/agents/main/agent,.openclaw-bundled-plugins}
+mkdir -p ~/openclaw-workspace/{.claude,.npm-global,.openclaw/agents/main/agent,.openclaw/workspace-writer,.openclaw/workspace-researcher,.openclaw/workspace-editor,.openclaw/workspace-memory-agent,.openclaw/workspace-escalation-agent,.openclaw-bundled-plugins}
 
 # 5. Create disk image for writable Nix store overlay
 truncate -s 4G nix-store-rw.img
@@ -210,7 +210,7 @@ users.users.agent.uid  = <your-uid>;
 ### Step 5 — Create workspace
 
 ```bash
-mkdir -p ~/openclaw-workspace/{.claude,.npm-global,.openclaw/agents/main/agent,.openclaw-bundled-plugins}
+mkdir -p ~/openclaw-workspace/{.claude,.npm-global,.openclaw/agents/main/agent,.openclaw/workspace-writer,.openclaw/workspace-researcher,.openclaw/workspace-editor,.openclaw/workspace-memory-agent,.openclaw/workspace-escalation-agent,.openclaw-bundled-plugins}
 chmod 777 ~/openclaw-workspace
 ```
 
@@ -581,7 +581,7 @@ Voeg een cron job toe aan `jobs.json` die elke avond om 23:00 sessie-logs leest 
 Voeg embedding API key toe aan `.env` en `memorySearch` config toe aan `openclaw.json` onder `agents.defaults`.
 
 **Fase 5 — Project Gateway** *(30 min, vereist VM rebuild)*
-Voeg `systemd.services.openclaw-gateway-project-a` toe aan `flake.nix` met eigen `stateDir` en poort.
+Voeg `systemd.services.openclaw-gateway-project-a` toe aan `flake.nix` met eigen `stateDir` en poort. Zet `channels.discord.enabled: false` in `project-a/openclaw.json` — project-a wordt aangestuurd via `agentTurn` door de hoofdcoordinator, niet direct vanuit Discord. Beide gateways op dezelfde Discord bot token veroorzaken dubbele responses.
 
 **Fase 6 — MEM0 Plugin** *(optioneel)*
 Installeer de `mem0-openclaw-mem0` plugin via de Openclaw marketplace voor volledig automatische conversatie-memory injectie.
