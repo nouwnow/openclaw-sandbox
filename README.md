@@ -1286,6 +1286,25 @@ Als editor en memory-agent zwaar draaien (bulk content pipelines, intensieve cro
 ## Troubleshooting
 
 <details>
+<summary>Discord pairing fails — "No pending pairing request found"</summary>
+
+`openclaw pairing approve` can't find the state directory when run without context. The fix — always prefix with `OPENCLAW_STATE_DIR`:
+
+```bash
+# In the VM — replace <CODE> with the code shown in Discord
+OPENCLAW_STATE_DIR=/home/agent/workspace/.openclaw openclaw pairing approve discord <CODE>
+```
+
+**Full flow:**
+1. In Discord, send `/pair` or trigger the pairing flow → bot replies with a 8-character code
+2. In the VM, run the command above with that code
+3. Expected output: `Approved discord sender <user-id>`
+
+> Running `openclaw pairing approve` without the env var looks in the wrong directory and always fails — even from inside `workspace/.openclaw/`.
+
+</details>
+
+<details>
 <summary>Bot connects but doesn't respond to questions</summary>
 
 The Discord pairing flow is built into the gateway and works without Anthropic auth. Actual AI responses require `auth-profiles.json`:
