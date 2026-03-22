@@ -280,6 +280,127 @@ tail -f /tmp/openclaw-gateway.log
 
 ---
 
+## Virtiofs Procesarchitectuur
+
+### Hoe de filesystem bridge in elkaar zit
+
+Elke virtiofs-share (gedeelde map tussen host en VM) wordt bediend door een keten van drie processen. Voor twee VMs (openclaw + nanoclaw) met elk vier shares resulteert dit in **18 processen** op de host — allemaal van jou, allemaal verwacht.
+
+```
+supervisord (1×)
+  └── bash wrapper (1× per share)          ← ons virtiofsd.package script
+        └── virtiofsd binary (1× per share) ← het actieve filesystem-serverproces
+```
+
+**Visualisatie voor de openclaw-VM (4 shares):**
+
+```
+supervisord (PID a)
+  ├── bash: virtiofsd  .claude-share     →  virtiofsd  .claude-share     (actief, Sl)
+  ├── bash: virtiofsd  .npm-global-share →  virtiofsd  .npm-global-share (actief, Sl)
+  ├── bash: virtiofsd  workspace-share   →  virtiofsd  workspace-share   (actief, Sl)
+  └── bash: virtiofsd  /nix/store-share  →  virtiofsd  /nix/store-share  (actief, Sl)
+
+idem voor nanoclaw-VM (PID b) + 4 shares
+──────────────────────────────────────────
+Totaal: 2 supervisord + 8 bash-wrappers + 8 virtiofsd-binaries = 18 processen
+```
+
+**Processtatussen in `ps aux`:**
+- `S` (sleeping) — de bash-wrapper heeft de child-virtiofsd gestart en wacht in zijn `while true` loop
+- `Sl` (sleeping, multi-threaded) — de echte virtiofsd bedient actief de VM via het socket
+
+### Waarom een bash wrapper?
+
+De microvm.nix runner vraagt virtiofsd op met `--posix-acl`. Dat vlag conflicteert met onze virtiofsd-versie en veroorzaakt een opstartfout. De wrapper in `flake.nix` filtert die vlag er stil uit:
+
+```bash
+# virtiofsd.package in flake.nix (vereenvoudigd)
+for arg in "$@"; do
+  case "$arg" in
+    --posix-acl) ;;           # ← wegfilteren
+    *) args+=( "$arg" ) ;;
+  esac
+done
+while true; do
+  virtiofsd "${args[@]}" >> /dev/null 2>&1
+  sleep 1
+done
+```
+
+De `while true`-lus zorgt dat virtiofsd automatisch herstart bij een clean exit (VM-reboot). Supervisord beheert de bash-wrapper zelf en herstart die bij crashes.
+
+### Koppeling met de multi-agent setup
+
+De vier virtiofs-shares per VM corresponderen direct met de agent-architectuur:
+
+| Share | Mount in VM | Gebruik door agents |
+|---|---|---|
+| `workspace` | `/home/agent/workspace` | Alle agents — bestanden lezen/schrijven, content opslaan, `openclaw.json` |
+| `.claude` | `/home/agent/.claude` | Claude Code auth — coordinator gebruikt dit om taken uit te voeren |
+| `.npm-global` | `/home/agent/.npm-global` | `claude` binary en npm-packages — gedeeld door alle agent-processen |
+| `/nix/store` | `/nix/store` | Read-only — Nix-packages gedeeld tussen host en VM, geen herdownload nodig |
+
+Elk virtiofsd-proces is een onafhankelijke, geïsoleerde brug voor één specifieke share. Als het workspace-proces crasht, blijven `.claude` en `.npm-global` bereikbaar. Dit is bewust: een failende bestandstoegang voor content heeft geen effect op de authenticatie van de coordinator.
+
+Voor een multi-agent orchestrator is dit optimaal: de share-granulariteit correspondeert met de scheidslijn tussen authenticatie (`.claude`), tooling (`.npm-global`) en data (`workspace`). Elke laag kan onafhankelijk herstarten.
+
+---
+
+### Log Bloat — het probleem en de fix
+
+**Het probleem:** standaard virtiofsd schrijft debuglogs. Bij actieve VM-gebruik produceert dit honderden megabytes per uur. Na een nacht draaien met meerdere agents en cron-jobs is een filesystem-overflow van >50 GB mogelijk.
+
+**Hoe het ontstaat:** microvm.nix start virtiofsd met `--log-level=debug` als default. Zonder expliciete override gaat alle output naar `/tmp/vfs-<vmname>.log`.
+
+**De fix in `flake.nix`:**
+
+```nix
+virtiofsd.extraArgs = [ "--sandbox=none" "--log-level=error" ];
+
+virtiofsd.package = pkgs.writeShellScriptBin "virtiofsd" ''
+  ...
+  while true; do
+    ${pkgs.virtiofsd}/bin/virtiofsd "${args[@]}" >> /dev/null 2>&1
+    #                                                ^^^^^^^^^^
+    #                               stdout + stderr naar /dev/null, geen logbestand
+    sleep 1
+  done
+'';
+```
+
+`--log-level=error` + `>> /dev/null 2>&1` elimineert alle loggingoutput. Alleen echte fouten worden nog gegenereerd, en die gaan nergens naartoe (debug is toch niet nuttig in productie).
+
+**Verifiëren na een update:**
+
+```bash
+# Alle virtiofsd-processen tonen — geen enkele mag --log-level=debug hebben
+ps aux | grep virtiofsd | grep -v grep | grep "log-level=debug"
+# Leeg = correct
+
+# Logbestanden mogen niet meer groeien
+ls -lh /tmp/vfs-*.log && sleep 15 && ls -lh /tmp/vfs-*.log
+# Zelfde grootte = correct
+```
+
+**Als je toch stale debug-processen ziet** (na een mislukte rebuild waarbij de oude runner nog draait naast de nieuwe):
+
+```bash
+# Processen met debug-flag identificeren
+ps aux | grep "log-level=debug" | grep virtiofsd | grep -v grep
+
+# Killen op PID — supervisord herstart ze automatisch met de nieuwe config
+kill <pid1> <pid2> ...
+
+# Daarna controleren of herstart met error-level plaatsvond
+ps aux | grep virtiofsd | grep -v grep | grep "log-level=error" | wc -l
+# Moet 8 zijn (4 per VM)
+```
+
+> **Nieuwe gebruikers:** voer dit als eerste controle uit als je een onverwacht volle schijf ziet. Het is de meest voorkomende oorzaak van schijfoverlopen in een actieve multi-agent setup.
+
+---
+
 ## Multi-Agent Pipeline
 
 Openclaw 2026.3.x has full native multi-agent support:
