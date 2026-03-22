@@ -136,7 +136,7 @@ echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
 sudo usermod -aG kvm $USER  # log out and back in
 
 # 4. Workspace
-mkdir -p ~/openclaw-workspace/{.claude,.npm-global,.openclaw/agents/main/agent,.openclaw/workspace-writer,.openclaw/workspace-researcher,.openclaw/workspace-editor,.openclaw/workspace-memory-agent,.openclaw/workspace-escalation-agent,.openclaw-bundled-plugins}
+mkdir -p ~/openclaw-workspace/{.claude,.npm-global,.openclaw/agents/main/agent,.openclaw/workspace,.openclaw/workspace-writer,.openclaw/workspace-researcher,.openclaw/workspace-editor,.openclaw/workspace-memory-agent,.openclaw/workspace-escalation-agent,.openclaw-bundled-plugins}
 
 # 5. Create disk image for writable Nix store overlay
 truncate -s 4G nix-store-rw.img
@@ -210,7 +210,7 @@ users.users.agent.uid  = <your-uid>;
 ### Step 5 — Create workspace
 
 ```bash
-mkdir -p ~/openclaw-workspace/{.claude,.npm-global,.openclaw/agents/main/agent,.openclaw/workspace-writer,.openclaw/workspace-researcher,.openclaw/workspace-editor,.openclaw/workspace-memory-agent,.openclaw/workspace-escalation-agent,.openclaw-bundled-plugins}
+mkdir -p ~/openclaw-workspace/{.claude,.npm-global,.openclaw/agents/main/agent,.openclaw/workspace,.openclaw/workspace-writer,.openclaw/workspace-researcher,.openclaw/workspace-editor,.openclaw/workspace-memory-agent,.openclaw/workspace-escalation-agent,.openclaw-bundled-plugins}
 chmod 777 ~/openclaw-workspace
 ```
 
@@ -1159,8 +1159,8 @@ OpenClaw laadt alle identity files (SOUL.md, AGENTS.md, etc.) als systeem-prompt
 ```json
 "agents": {
   "defaults": {
-    "bootstrapMaxChars": 12000,
-    "bootstrapTotalMaxChars": 40000
+    "bootstrapMaxChars": 20000,
+    "bootstrapTotalMaxChars": 80000
   }
 }
 ```
@@ -1169,6 +1169,8 @@ OpenClaw laadt alle identity files (SOUL.md, AGENTS.md, etc.) als systeem-prompt
 - `bootstrapTotalMaxChars` — gecombineerd maximum over alle bootstrap-bestanden
 
 **Vuistregel:** `wc -m workspace/*.md` geeft tekencount. Deel door 4 voor een tokenschatting. De huidige AGENTS.md is ~6.000 tekens (±1.500 tokens) — ruim binnen de limiet.
+
+> Limieten verhoogd van 12.000/40.000 naar 20.000/80.000 na analyse — de defaults zijn 20.000/150.000. Subagents ontvangen alleen AGENTS.md en TOOLS.md, de coordinator krijgt alle bootstrap-bestanden.
 
 #### Laag 5 — Minimal promptmodus voor subagents (beschikbaar, bewust niet geïmplementeerd)
 
@@ -1211,15 +1213,21 @@ Heartbeats draaien nu op Haiku in plaats van Sonnet — 4× goedkoper per heartb
 
 ```json
 "heartbeat": {
-  "every": "30m",
+  "every": "55m",
   "model": "anthropic/claude-haiku-4-5-20251001"
+},
+"models": {
+  "anthropic/claude-sonnet-4-6": {
+    "params": { "cacheRetention": "long" }
+  }
 }
 ```
 
 - `model: haiku` — 4× goedkoper per heartbeat-trigger versus Sonnet
-- `every: 30m` — standaard interval; bug #47940 (interval verdubbeling) lijkt opgelost in huidige versie — effectief interval monitoren
+- `every: 55m` — afgestemd op de Anthropic prompt-cache TTL van 1 uur; heartbeat vlak voor expiry houdt de cache warm
+- `cacheRetention: long` — activeert 1-uur cache TTL voor Sonnet; vereist `extended-cache-ttl-2025-04-11` beta flag (automatisch via OpenClaw)
 
-> Let op: de parameter heet `every` (string, bijv. `"30m"`), niet `intervalMinutes`.
+> Let op: de parameter heet `every` (string, bijv. `"55m"`), niet `intervalMinutes`.
 
 #### Laag 8 — Cron frequentie (geconfigureerd ✅)
 
