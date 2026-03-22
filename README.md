@@ -1248,38 +1248,60 @@ De **Mission Control Dashboard** toont real-time tokenverbruik in de **Token Eff
 - **Cache hit rate** — percentage cloud tokens dat gecached was (typisch 85–100%)
 - **Input / Output / Cache** — absolute aantallen per periode
 - **Est. cost** — geschatte kosten op basis van Anthropic's prijzen
-- **Per-agent breakdown** — welke agent hoeveel verbruikt, met model-badge
-- **Local vs Cloud split** — Ollama vs Anthropic gesplitst, met besparingen
+- **Per-agent breakdown** — welke agent hoeveel verbruikt, met model-badge (geconfigureerd model)
+- **Local vs Cloud split** — Ollama vs Anthropic volledig gesplitst, per agent, met besparingen
+
+#### Per-agent breakdown
+
+Elke agent toont zijn geconfigureerde model-badge — zo zie je in één oogopslag welke agents Anthropic gebruiken en welke lokaal draaien:
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Token Efficiency (7d)                               │
-│                                                     │
-│  Cache hit rate  ████████████████████ 100%          │
-│                                                     │
-│  Input    Output    Cache      Est. cost            │
-│  216      9.6k      920.2k     $0.4282              │
-│                                                     │
-│  coordinator  in:209  out:8.7k  cache:905k  S4.6   │
-│  researcher   in:4    out:687   cache:15.6k S4.6   │
-│  editor       in:840  out:2.1k  cache:0     Ollama │  ← gratis!
-│  memory-agent in:120  out:380   cache:0     Ollama │  ← gratis!
-│                                                     │
-│  ─────────────────── Local vs Cloud ──────────────  │
-│  ██████░░░░░░░░░░░░  28% local  72% cloud           │
-│                                                     │
-│  ☁️  Cloud   cache hit: 97%   cost: $0.43           │
-│  🖥️  Local   3k tokens        bespaard: $0.012      │
-└─────────────────────────────────────────────────────┘
+Per agent
+memory-agent  in:31.8k  out:4.4k  cache:558.9k  [Ollama]   ← lokaal, gratis
+editor        in:15.1k  out:3.8k  cache:25.9k   [Ollama]   ← lokaal, gratis
+coordinator   in:629    out:90.3k  cache:5.86M   [S4.6]
+researcher    in:43     out:13.7k  cache:386.5k  [S4.6]
+writer        in:24     out:6.3k   cache:91.0k   [S4.6]
+escalation-agent  in:0  out:0     cache:0        [O4.6]
 ```
+
+#### Local vs Cloud — volledige opsplitsing
+
+De Local vs Cloud sectie splitst alle activiteit nauwkeurig op in twee afzonderlijke tabellen:
+
+```
+⚡ Local 29%  ☁ Cloud 71%
+
+☁ Cloud (Anthropic)                              $3.68
+Cache hit rate  ████████████████████  100%
+Input: 782    Output: 117.5k    Cache: 6.93M
+
+  memory-agent  in:77    out:4.2k  cache:558.9k  [H4.5]   ← voorheen cloud
+  editor        in:9     out:3.0k  cache:25.9k   [S4.6]   ← voorheen cloud
+  coordinator   in:629   out:90.3k cache:5.86M   [S4.6]
+  researcher    in:43    out:13.7k cache:386.5k  [S4.6]
+  writer        in:24    out:6.3k  cache:91.0k   [S4.6]
+
+⚡ Local (Ollama)                                 $0.00
+Input: 46.9k    Output: 1.1k
+Bespaard vs Haiku:  $0.04
+
+  memory-agent  in:31.7k  out:221   [Q3.5]
+  editor        in:15.1k  out:844   [Q3.5]
+```
+
+**Hoe je dit leest:**
+
+- **Cloud tabel** — alleen Anthropic-tokens, met het Anthropic model dat historisch gebruikt werd per agent. Memory-agent en editor staan hier ook als ze ooit cloud hebben gedraaid (voor de migratie naar Ollama) — zo zie je de volledige history.
+- **Local tabel** — alleen Ollama-tokens, alleen agents die daadwerkelijk lokaal hebben gedraaid. Badge toont het echte modelnaam (`Q3.5` voor `qwen3.5:9b`) in plaats van generiek "Ollama".
+- **Bespaard vs Haiku** — wat dezelfde local tokens zouden hebben gekost als cloud fallback (Haiku-tarief). Dit is de meetbare besparing van het draaien op Ollama.
 
 **Wat je ziet als Ollama actief is:**
-- Editor en memory-agent tonen groen **Ollama** badge in plaats van **H4.5**
-- "Local vs Cloud" split bar toont de verhouding lokaal/cloud over alle sessies
-- "Bespaard vs Haiku" — wat dezelfde tokens gekost hadden op de cloud fallback
-- Ollama rapporteert geen cache tokens (geen prompt caching API) — dit is normaal
+- Local/Cloud split bar: hoe groter het groene deel, hoe meer lokaal werk er verzet werd
+- Memory-agent en editor verdwijnen uit de Local tabel als ze niets hebben gedaan in de geselecteerde periode
+- Ollama rapporteert geen cache tokens (geen prompt caching API) — dit is normaal; cache in de Cloud tabel zijn uitsluitend Anthropic cache reads
 
-Als editor en memory-agent zwaar draaien (bulk content pipelines, intensieve cron jobs) zie je de Ollama share groeien en de cloud costs dalen.
+Als editor en memory-agent zwaar draaien (bulk content pipelines, intensieve cron jobs) zie je de Local share groeien en de "Bespaard vs Haiku" bedrag oplopen. Bij een grote pipeline (100k+ lokale tokens) kan dit al snel $0.10–$0.50 per run besparen.
 
 ---
 
