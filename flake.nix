@@ -55,7 +55,7 @@
 
             virtiofsd.group            = null;
             virtiofsd.inodeFileHandles = "never";
-            virtiofsd.extraArgs        = [ "--sandbox=none" "--log-level=debug" ];
+            virtiofsd.extraArgs        = [ "--sandbox=none" "--log-level=error" ];
 
             virtiofsd.package = pkgs.writeShellScriptBin "virtiofsd" ''
               args=()
@@ -66,8 +66,7 @@
                 esac
               done
               while true; do
-                ${pkgs.virtiofsd}/bin/virtiofsd "''${args[@]}" >> /tmp/vfs-openclaw.log 2>&1
-                echo "[virtiofsd] gestopt (exit $?), herstart over 1s..." >> /tmp/vfs-openclaw.log
+                ${pkgs.virtiofsd}/bin/virtiofsd "''${args[@]}" >> /dev/null 2>&1
                 sleep 1
               done
             '';
