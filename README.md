@@ -1046,20 +1046,90 @@ Bij lange sessies betaal je cache-prijs over 300k+ tokens per beurt. Zonder oplo
 #### Laag 1 — Prompt caching (automatisch ✅)
 Altijd actief. Geen configuratie. Levert 85%+ kostenbesparing op de vaste overhead.
 
-#### Laag 2 — Model tiering (geconfigureerd ✅)
+#### Laag 2 — Model tiering met Ollama escalatieladder (geconfigureerd ✅)
 
-Niet elke taak vereist het duurste model. De agent-tier mapping:
+Niet elke taak vereist een cloud model. De escalatieladder — van goedkoop naar krachtig:
 
-| Agent | Model | Tier | Gebruik | Kosten vs Sonnet |
+```
+Tier 1 — Ollama (lokaal, gratis)
+  └── editor, memory-agent → qwen3.5:9b op je eigen GPU
+        │  als Ollama niet bereikbaar is:
+        ▼
+Tier 2 — Claude Haiku 4.5 (cloud fallback, ~4× goedkoper dan Sonnet)
+        │  als de taak te complex is voor Haiku:
+        ▼
+Tier 3 — Claude Sonnet 4.6 (cloud, default)
+  └── coordinator, writer, researcher
+        │  als de taak onoplosbaar is voor Sonnet:
+        ▼
+Tier 4 — Claude Opus 4.6 (cloud, alleen bij expliciete escalatie)
+  └── escalation-agent
+```
+
+De volledige agent-tier mapping:
+
+| Agent | Model | Tier | Gebruik | Kosten |
 |---|---|---|---|---|
-| `coordinator` | claude-sonnet-4-6 | 3 | Orchestratie, planning, complexe redenering | 1× |
+| `editor` | ollama/qwen3.5:9b | 1 | Formatteren, edits, structuur | **gratis** |
+| `memory-agent` | ollama/qwen3.5:9b | 1 | Memory extractie, cron-taken | **gratis** |
+| *(Ollama offline)* | *claude-haiku-4-5* | *2* | *Automatische fallback* | *~4× goedkoper* |
+| `coordinator` | claude-sonnet-4-6 | 3 | Orchestratie, planning, complexe redenering | 1× (baseline) |
 | `writer` | claude-sonnet-4-6 | 3 | Artikelen, creatief schrijven | 1× |
 | `researcher` | claude-sonnet-4-6 | 3 | Multi-stap research, bronanalyse | 1× |
-| `editor` | claude-haiku-4-5 | 2 | Formatteren, korte edits | **~4× goedkoper** |
-| `memory-agent` | claude-haiku-4-5 | 2 | Extractie, memory schrijven, cron-taken | **~4× goedkoper** |
-| `escalation-agent` | claude-opus-4-6 | 4 | Alleen bij expliciete escalatie | 5× duurder |
+| `escalation-agent` | claude-opus-4-6 | 4 | Alleen bij expliciete escalatie | 5× |
 
-De coordinator instrueert welke subagent een taak uitvoert. Simpele taken gaan naar Haiku (editor/memory-agent), complexe taken naar Sonnet (writer/researcher), onoplosbare taken naar Opus.
+**Praktisch effect:** editor en memory-agent verwerken samen ~40–60% van alle sub-agent taken. Als die gratis draaien op Ollama, dalen de cloud kosten significant — zonder verlies van kwaliteit voor eenvoudige taken.
+
+<details>
+<summary><strong>Ollama instellen — vereisten en config</strong></summary>
+
+**Vereisten:**
+- Ollama draait op je host: `ollama serve` (standaard poort 11434)
+- Model beschikbaar: `ollama pull qwen3.5:9b`
+- Host bereikbaar vanuit de VM via de tap interface (standaard `10.0.1.1`)
+
+**`.env` (in `~/openclaw-workspace/`):**
+```bash
+OLLAMA_API_KEY=ollama-local   # elke waarde, vereist om provider te registreren
+```
+
+**`openclaw.json` — relevante config:**
+```json
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-sonnet-4-6",
+        "fallbacks": ["anthropic/claude-haiku-4-5-20251001"]
+      }
+    },
+    "list": [
+      { "id": "editor",       "model": "ollama/qwen3.5:9b" },
+      { "id": "memory-agent", "model": "ollama/qwen3.5:9b" }
+    ]
+  },
+  "models": {
+    "providers": {
+      "ollama": {
+        "baseUrl": "http://10.0.1.1:11434",
+        "models": [{ "id": "qwen3.5:9b", "name": "qwen3.5:9b" }]
+      }
+    }
+  }
+}
+```
+
+> **Let op:** Per-agent `model` moet een plain string zijn (`"ollama/qwen3.5:9b"`), geen object. Het `primary`/`fallbacks` object werkt alleen op `agents.defaults` niveau. Zie [Troubleshooting — per-agent model object](#) voor uitleg.
+
+**Controleren of Ollama gebruikt wordt:**
+```bash
+# Op de host, tijdens een pipeline run:
+nvtop   # GPU activity zichtbaar voor editor/memory-agent taken
+```
+
+</details>
+
+De coordinator instrueert welke subagent een taak uitvoert. Simpele taken gaan naar Tier 1/2 (editor/memory-agent), complexe taken naar Tier 3 (writer/researcher), onoplosbare taken naar Tier 4 (escalation-agent).
 
 #### Laag 3 — Compaction (actief als ingebouwde default ✅)
 
@@ -1161,9 +1231,9 @@ De `elk-uur-statuscheck` en `dagelijkse-briefing` waren al op verstandige interv
 
 | Oplossing | Wat het doet | Status |
 |---|---|---|
+| **Ollama Tier 1** | Editor + memory-agent draaien lokaal op qwen3.5:9b — geen API-kosten | ✅ Geïmplementeerd |
 | **Mem0 / native search** | Vervangt groeiende conversation history door gerichte retrieval | Configureerbaar (zie Memory sectie) |
 | **AGENTS.md pruning** | Wekelijks verouderde instructies verwijderen, patronen naar SOUL.md promoveren | Handmatig onderhoud |
-| **Ollama Tier 1** | Lokaal model voor classificatie/routing — geen API-kosten | Toekomstig (PRD-v3) |
 | **Shared KV-cache** | Anthropic werkt aan cache die tussen sessies blijft leven | Roadmap Anthropic |
 | **Context distillation** | Agent vat zichzelf samen na elke sessie (uitbreiding op compaction) | Toekomstig |
 
@@ -1173,32 +1243,43 @@ De `elk-uur-statuscheck` en `dagelijkse-briefing` waren al op verstandige interv
 
 ### Token Efficiency monitoren
 
-De **Mission Control Dashboard** toont real-time tokenverbruik:
+De **Mission Control Dashboard** toont real-time tokenverbruik in de **Token Efficiency widget** (Tab 1):
 
-- **Cache hit rate** — percentage van alle verwerkte tokens dat gecached was
+- **Cache hit rate** — percentage cloud tokens dat gecached was (typisch 85–100%)
 - **Input / Output / Cache** — absolute aantallen per periode
+- **Est. cost** — geschatte kosten op basis van Anthropic's prijzen
 - **Per-agent breakdown** — welke agent hoeveel verbruikt, met model-badge
-- **Est. cost** — geschatte kosten gebaseerd op Anthropic's prijzen
+- **Local vs Cloud split** — Ollama vs Anthropic gesplitst, met besparingen
 
 ```
-┌─────────────────────────────────────────────┐
-│  Token Efficiency (7d)                       │
-│                                              │
-│  Cache hit rate  ████████████████████ 100%  │
-│                                              │
-│  Input    Output    Cache                    │
-│  216      9.6k      920.2k                  │
-│                                              │
-│  Est. cost (7d)              $0.4282         │
-│                                              │
-│  coordinator  in:209  out:8.7k  cache:905k  S4.6 │
-│  researcher   in:4    out:687   cache:15.6k S4.6 │
-│  editor       in:0    out:0     cache:0     H4.5 │
-│  memory-agent in:0    out:0     cache:0     H4.5 │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  Token Efficiency (7d)                               │
+│                                                     │
+│  Cache hit rate  ████████████████████ 100%          │
+│                                                     │
+│  Input    Output    Cache      Est. cost            │
+│  216      9.6k      920.2k     $0.4282              │
+│                                                     │
+│  coordinator  in:209  out:8.7k  cache:905k  S4.6   │
+│  researcher   in:4    out:687   cache:15.6k S4.6   │
+│  editor       in:840  out:2.1k  cache:0     Ollama │  ← gratis!
+│  memory-agent in:120  out:380   cache:0     Ollama │  ← gratis!
+│                                                     │
+│  ─────────────────── Local vs Cloud ──────────────  │
+│  ██████░░░░░░░░░░░░  28% local  72% cloud           │
+│                                                     │
+│  ☁️  Cloud   cache hit: 97%   cost: $0.43           │
+│  🖥️  Local   3k tokens        bespaard: $0.012      │
+└─────────────────────────────────────────────────────┘
 ```
 
-Als editor en memory-agent taken uitvoeren zie je hun Haiku-tokens verschijnen — significant goedkoper dan dezelfde taken op de coordinator.
+**Wat je ziet als Ollama actief is:**
+- Editor en memory-agent tonen groen **Ollama** badge in plaats van **H4.5**
+- "Local vs Cloud" split bar toont de verhouding lokaal/cloud over alle sessies
+- "Bespaard vs Haiku" — wat dezelfde tokens gekost hadden op de cloud fallback
+- Ollama rapporteert geen cache tokens (geen prompt caching API) — dit is normaal
+
+Als editor en memory-agent zwaar draaien (bulk content pipelines, intensieve cron jobs) zie je de Ollama share groeien en de cloud costs dalen.
 
 ---
 
@@ -1286,6 +1367,34 @@ See [OPENCLAW-SETUP.md — Stap 9](OPENCLAW-SETUP.md) for the full protocol and 
 <summary>Dashboard agents/sessions panel shows 0 items despite 200 OK</summary>
 
 The gateway wraps list results in an object: `agents.list` returns `{ agents: [...], defaultId, ... }` and `sessions.list` returns `{ sessions: [...], count, ... }`. The API routes must extract the nested array, not return the wrapper object directly.
+
+</details>
+
+<details>
+<summary>Editor/memory-agent negeren Ollama config en gebruiken toch Sonnet</summary>
+
+Per-agent `model` als object (`{ "primary": "...", "fallbacks": [...] }`) wordt silently genegeerd — de gateway accepteert het zonder error maar past het niet toe. Elke agent valt terug op `agents.defaults.model`.
+
+**Symptoom:** je ziet in de gateway logs `model: sonnet` voor editor/memory-agent, ook al staat er een Ollama config in `openclaw.json`.
+
+**Fix:** gebruik een plain string voor per-agent model:
+```json
+{ "id": "editor", "model": "ollama/qwen3.5:9b" }
+```
+
+Het `primary`/`fallbacks` object werkt alleen op `agents.defaults` niveau. Zet de Haiku fallback daar:
+```json
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-sonnet-4-6",
+        "fallbacks": ["anthropic/claude-haiku-4-5-20251001"]
+      }
+    }
+  }
+}
+```
 
 </details>
 
