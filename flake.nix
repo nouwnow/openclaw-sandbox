@@ -119,7 +119,7 @@
           '';
 
           systemd.tmpfiles.rules = [
-            "L+ /home/agent/.claude.json - - - - /home/agent/workspace/.claude.json"
+            "L+ /home/agent/.claude.json - - - - /home/agent/.claude/claude.json"
             # Openclaw state directories (virtiofs → persistent op host)
             "d /home/agent/workspace/.openclaw/logs                    0755 agent agent -"
             "d /home/agent/workspace/.openclaw/agents/main/agent       0755 agent agent -"

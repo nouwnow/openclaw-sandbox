@@ -1444,14 +1444,25 @@ sudo systemctl restart openclaw-gateway
 </details>
 
 <details>
-<summary>Claude Code re-asks for login after reboot</summary>
+<summary>Claude Code re-asks for login after every VM reboot</summary>
 
-```bash
-# In the VM, after first login:
-cp ~/.claude.json ~/workspace/.claude.json
+**Root cause:** `~/.claude.json` is a symlink created by `systemd-tmpfiles` on every boot. It used to point to `~/workspace/.claude.json` — a file that never gets written there by modern Claude Code versions. The broken symlink makes Claude think it's a fresh install and shows the OAuth wizard.
+
+**Fix (already applied in `flake.nix`):** The symlink now points inside the `~/.claude/` directory, which is already persisted via virtiofs:
+
+```
+~/.claude.json  →  ~/.claude/claude.json  (inside the persisted virtiofs mount)
 ```
 
-The symlink is already configured in `flake.nix` — this only needs to be done once.
+**One-time migration** — run this in the VM once after the next auth wizard:
+
+```bash
+cp ~/.claude.json ~/.claude/claude.json
+```
+
+After this, every reboot will find `~/.claude/claude.json` through the symlink and skip the wizard. The `nix build` + VM restart picks up the new symlink target automatically.
+
+> **Why `~/.claude/` and not `~/workspace/`?** The `.claude/` directory is already a virtiofs share pointing to `~/openclaw-workspace/.claude/` on the host. No separate file in `~/workspace/` needed — credentials and config live in the same persistent directory.
 
 </details>
 
