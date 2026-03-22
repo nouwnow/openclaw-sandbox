@@ -1131,11 +1131,26 @@ nvtop   # GPU activity zichtbaar voor editor/memory-agent taken
 
 De coordinator instrueert welke subagent een taak uitvoert. Simpele taken gaan naar Tier 1/2 (editor/memory-agent), complexe taken naar Tier 3 (writer/researcher), onoplosbare taken naar Tier 4 (escalation-agent).
 
-#### Laag 3 — Compaction (actief als ingebouwde default ✅)
+#### Laag 3 — Compaction (geconfigureerd ✅)
 
-`compaction` is niet configureerbaar via `openclaw.json` in v2026.3.14 — zowel op `agents.defaults` als op `agents.list` niveau wordt het als invalid key beschouwd en veroorzaakt een gateway crash. OpenClaw gebruikt automatisch `safeguard` modus als ingebouwde default: context wordt gecomprimeerd bij dreigende overflow, zonder configuratie nodig.
+Wanneer een sessie de context window nadert, compacteert OpenClaw automatisch de oudere history tot een samenvatting. Met expliciete config activeren we ook een `memoryFlush` — vlak voor compaction schrijft de agent duurzame herinneringen naar disk zodat niets verloren gaat.
 
-> Zodra OpenClaw dit fixt: zie [issue #1](https://github.com/nouwnow/openclaw-sandbox/issues/1)
+```json
+"compaction": {
+  "mode": "safeguard",
+  "identifierPolicy": "strict",
+  "memoryFlush": {
+    "enabled": true,
+    "softThresholdTokens": 6000,
+    "systemPrompt": "Session nearing compaction. Store durable memories now.",
+    "prompt": "Write any lasting notes to memory/YYYY-MM-DD.md; reply with NO_REPLY if nothing to store."
+  }
+}
+```
+
+- `mode: safeguard` — beschermt cruciale context bij compaction, voorkomt informatieverlies
+- `identifierPolicy: strict` — deployment IDs, ticket IDs en host:port-paren worden letterlijk bewaard in de samenvatting
+- `memoryFlush` — stille extra turn vlak voor compaction zodat de memory-agent nog kan opschrijven wat belangrijk is
 
 #### Laag 4 — Bootstrap limieten (geconfigureerd ✅)
 
@@ -1155,25 +1170,20 @@ OpenClaw laadt alle identity files (SOUL.md, AGENTS.md, etc.) als systeem-prompt
 
 **Vuistregel:** `wc -m workspace/*.md` geeft tekencount. Deel door 4 voor een tokenschatting. De huidige AGENTS.md is ~6.000 tekens (±1.500 tokens) — ruim binnen de limiet.
 
-#### Laag 5 — Minimal promptmodus voor subagents (niet ondersteund in v2026.3.14)
+#### Laag 5 — Minimal promptmodus voor subagents (beschikbaar, bewust niet geïmplementeerd)
 
-`promptMode: minimal` op agent-niveau veroorzaakt een gateway crashloop — de key wordt als invalid beschouwd. Het concept is correct: subagents hebben geen Skills, Heartbeats of Messaging nodig. Zodra OpenClaw dit ondersteunt is de gewenste config:
-
-```json
-{
-  "id": "writer",
-  "promptMode": "minimal"
-}
-```
+`promptMode: minimal` werkt in de huidige versie — de crashloop van v2026.3.14 is opgelost. Het verwijdert Skills, Memory Recall, Heartbeats, Messaging en Reply Tags uit de subagent system prompt.
 
 | Modus | Bevat | Gebruik |
 |---|---|---|
 | `full` (default) | Skills, Memory Recall, Heartbeats, Messaging, Reply Tags | Coordinator — heeft alles nodig |
 | `minimal` | Alleen taak-instructies en tools | Subagents — voeren één taak uit |
 
-Geschatte besparing zodra beschikbaar: 20-40% minder tokens per subagent-aanroep.
+**Waarom niet geïmplementeerd:** `minimal` verwijdert de Skills-sectie waardoor subagents niet weten welke skills beschikbaar zijn en ze nooit laden. Dit blokkeert toekomstige uitbreiding van `writer`, `researcher` en `editor` met agent-specifieke skills. De `memory-agent` (enige kandidaat zonder skills) draait op Ollama — token-besparing is daar irrelevant.
 
-> Zodra OpenClaw dit fixt: zie [issue #2](https://github.com/nouwnow/openclaw-sandbox/issues/2)
+**Heroverwegen als:** skills per subagent zijn uitgewerkt en duidelijk is welke agents nooit skills nodig hebben. Geschatte besparing: 20–40% minder tokens per subagent-aanroep.
+
+> Zie [issue #2](https://github.com/nouwnow/openclaw-sandbox/issues/2) voor de volledige afweging.
 
 #### Laag 6 — Dedicated agents per domein ✅
 
@@ -1195,25 +1205,21 @@ Elke agent heeft zijn eigen `workspace-{id}/AGENTS.md` met alleen de instructies
 
 ---
 
-#### Laag 7 — Heartbeat model & interval (niet ondersteund in v2026.3.14)
+#### Laag 7 — Heartbeat model & interval (geconfigureerd ✅)
 
-`agents.defaults.heartbeat` veroorzaakt een gateway crashloop in de huidige versie — de config-key wordt als invalid beschouwd. Er staan meerdere open issues voor in de OpenClaw repo (#43728, #47940, #49452). Zodra dit gefixed is, is de gewenste config:
+Heartbeats draaien nu op Haiku in plaats van Sonnet — 4× goedkoper per heartbeat-trigger.
 
 ```json
-"agents": {
-  "defaults": {
-    "heartbeat": {
-      "intervalMinutes": 28,
-      "model": "anthropic/claude-haiku-4-5-20251001"
-    }
-  }
+"heartbeat": {
+  "every": "30m",
+  "model": "anthropic/claude-haiku-4-5-20251001"
 }
 ```
 
-- `model: haiku` — 4× goedkoper per heartbeat-trigger
-- `intervalMinutes: 28` — effectief interval is 2× geconfigureerd (bekend bug #47940), dus 28 → ~56 min om cache warm te houden
+- `model: haiku` — 4× goedkoper per heartbeat-trigger versus Sonnet
+- `every: 30m` — standaard interval; bug #47940 (interval verdubbeling) lijkt opgelost in huidige versie — effectief interval monitoren
 
-> **Niet toepassen totdat OpenClaw heartbeat-config valideert zonder crash.** Zie [issue #3](https://github.com/nouwnow/openclaw-sandbox/issues/3)
+> Let op: de parameter heet `every` (string, bijv. `"30m"`), niet `intervalMinutes`.
 
 #### Laag 8 — Cron frequentie (geconfigureerd ✅)
 
