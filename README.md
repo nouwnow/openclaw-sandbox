@@ -2,7 +2,7 @@
 
 # Openclaw Sandbox
 
-**A hypervisor-isolated command center for a multi-agent AI pipeline — controlled entirely from Discord.**
+**A hypervisor-isolated command center for a corporate AI executive team — controlled entirely from Discord.**
 
 *Built on [Openclaw](https://github.com/openclaw/openclaw) + [NixOS MicroVM](https://github.com/astro/microvm.nix). Declarative, reproducible, and small enough to understand.*
 
@@ -24,7 +24,7 @@
 
 This sandbox wraps Openclaw in a **NixOS MicroVM** with **cloud-hypervisor** — giving you true hypervisor-level isolation. The agent can't touch your host. It can only see what you explicitly share via virtiofs. Everything is declarative: one `flake.nix` defines the entire environment, reproducibly.
 
-The result: Openclaw's full multi-agent power — coordinator, writer, researcher, editor — without compromising your host system.
+The result: Openclaw's full multi-agent power — a corporate executive team (COO, CTO, CMO, CRO) — without compromising your host system.
 
 > **Looking for a simpler single-agent setup?**
 > See [nanoclaw-sandbox](https://github.com/nouwnow/nanoclaw-sandbox) — the same hypervisor isolation pattern for a lightweight Telegram bot.
@@ -34,37 +34,36 @@ The result: Openclaw's full multi-agent power — coordinator, writer, researche
 ## What You Get
 
 <div align="center">
-<img src="assets/office-preview.png" alt="Mission Control — Pixel Art Office" width="820" />
-<p><em>Mission Control — live pixel art view of your agent team. Characters walk to their desks when working, rest at the pool when done, and show speech bubbles with what they're actually writing.</em></p>
+<img src="assets/team-preview.png" alt="Mission Control — Executive Team" width="820" />
+<p><em>Mission Control — your AI executive team. Muddy (COO) runs the operation from Discord, delegating to Elon (CTO), Gary (CMO) and Warren (CRO). Live pixel art shows who's working, resting, or in a meeting.</em></p>
 </div>
 
 ---
 
-**One Discord bot. A full AI team behind it.**
+**One Discord bot. A full AI executive team behind it.**
 
 ```
 You (Discord)
     │
     ▼
-@OpenClaw Agent — coordinator
-    ├── 🔍 Researcher  → finds sources, facts, background
-    ├── ✍️  Writer      → drafts content
-    └── 🎨 Editor      → refines and finalizes
+Muddy 🐙 — COO (coordinator, always available)
+    ├── Elon  ⚡ CTO  → technical architecture, infrastructure, security
+    ├── Gary  🎯 CMO  → content strategy, brand voice, creative direction
+    ├── Warren 📈 CRO → revenue operations, growth metrics, partnerships
+    └── Memory Agent 🧠 → long-term memory storage and retrieval
          │
          ▼
     ~/openclaw-workspace/content/
 ```
 
-Each sub-agent gets its own **Discord thread** — you watch the full pipeline live as it executes. Steer agents mid-task, kill them, inspect logs — all from Discord.
+Muddy **always delegates** — staying available for you while the team executes. Add `"doe het nu"` at the end of any message to have Muddy handle it directly himself.
 
 **From Discord:**
 ```
-@OpenClaw Agent write a deep-dive article on AI trends in 2026 — use the full team
-@OpenClaw Agent research the top 5 competitors of [company] and make a SWOT
-@OpenClaw Agent every Monday at 9:00: generate the content calendar for the week
-/subagents list
-/log 2
-/steer 1 focus more on the European market
+Muddy, laat Warren een concurrentieanalyse doen van onze markt
+Muddy, vraag Gary om een welkomsttekst voor nieuwe gasten — warm en professioneel
+Muddy, wat is onze sterkste USP voor zakelijke reizigers? doe het nu
+Muddy, laat Elon de website auditen op laadtijd en SEO
 ```
 
 ---
@@ -74,7 +73,7 @@ Each sub-agent gets its own **Discord thread** — you watch the full pipeline l
 ```
 Host (Linux)
 └── NixOS MicroVM (cloud-hypervisor, 8GB RAM, 4 vCPU)
-    ├── openclaw-gateway          (port 18789) ← orchestrator: coordinator + writer + researcher + editor
+    ├── openclaw-gateway          (port 18789) ← main: Muddy (COO) + Elon + Gary + Warren + Memory Agent
     ├── openclaw-gateway-project-a (port 18790) ← project-a: coordinator-a (isolated workspace, geen Discord)
     ├── dashboard (Next.js)        (port 3333)  ← Mission Control web UI
     └── virtiofs mounts
@@ -87,13 +86,16 @@ Host (Linux)
 Discord / Mission Control
           │
           ▼
-┌─────────────────────────┐
-│  ORCHESTRATOR  (:18789) │  ← coordinator routes tasks
-│  writer / researcher    │  ← content pipeline agents
-│  editor                 │
-└────────────┬────────────┘
-             │ delegates via agentTurn
-             ▼
+┌──────────────────────────────────────────┐
+│  MAIN GATEWAY  (:18789)                  │
+│  Muddy 🐙 COO  ← Discord binding        │
+│    ├── Elon  ⚡ CTO (sessions_spawn)    │
+│    ├── Gary  🎯 CMO (sessions_spawn)    │
+│    ├── Warren 📈 CRO (sessions_spawn)   │
+│    └── Memory Agent 🧠 (sessions_spawn) │
+└───────────────────┬──────────────────────┘
+                    │ sessions_spawn (isolated tasks)
+                    ▼
 ┌─────────────────────────┐
 │  PROJECT-A  (:18790)    │  ← isolated context, own memory
 │  coordinator-a          │
@@ -136,7 +138,7 @@ echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
 sudo usermod -aG kvm $USER  # log out and back in
 
 # 4. Workspace
-mkdir -p ~/openclaw-workspace/{.claude,.npm-global,.openclaw/agents/main/agent,.openclaw/workspace,.openclaw/workspace-writer,.openclaw/workspace-researcher,.openclaw/workspace-editor,.openclaw/workspace-memory-agent,.openclaw/workspace-escalation-agent,.openclaw-bundled-plugins}
+mkdir -p ~/openclaw-workspace/{.claude,.npm-global,.openclaw/agents/main/agent,.openclaw/workspace,.openclaw/workspace-elon,.openclaw/workspace-gary,.openclaw/workspace-warren,.openclaw/workspace-memory-agent,.openclaw/cron,.openclaw-bundled-plugins,content/{articles,newsletters,research,scripts,other}}
 
 # 5. Create disk image for writable Nix store overlay
 truncate -s 4G nix-store-rw.img
@@ -210,7 +212,7 @@ users.users.agent.uid  = <your-uid>;
 ### Step 5 — Create workspace
 
 ```bash
-mkdir -p ~/openclaw-workspace/{.claude,.npm-global,.openclaw/agents/main/agent,.openclaw/workspace,.openclaw/workspace-writer,.openclaw/workspace-researcher,.openclaw/workspace-editor,.openclaw/workspace-memory-agent,.openclaw/workspace-escalation-agent,.openclaw-bundled-plugins}
+mkdir -p ~/openclaw-workspace/{.claude,.npm-global,.openclaw/agents/main/agent,.openclaw/workspace,.openclaw/workspace-elon,.openclaw/workspace-gary,.openclaw/workspace-warren,.openclaw/workspace-memory-agent,.openclaw/cron,.openclaw-bundled-plugins,content/{articles,newsletters,research,scripts,other}}
 chmod 777 ~/openclaw-workspace
 ```
 
@@ -452,7 +454,7 @@ ps aux | grep virtiofsd | grep -v grep | grep "log-level=debug"
 Openclaw 2026.3.x has full native multi-agent support:
 
 - **Agent bindings** — route Discord channels or DMs to specific agents
-- **Subagent spawning** — coordinator spawns writer/researcher/editor as `run`-mode tasks
+- **Subagent spawning** — Muddy (COO) spawns Elon/Gary/Warren as `run`-mode tasks via `sessions_spawn`
 - **Discord thread binding** — each sub-agent automatically gets its own Discord thread via `registerDiscordSubagentHooks`
 - **Live control** — `/subagents list`, `/steer <n> <msg>`, `/kill <n>`, `/log <n>` from Discord
 - **Parallel broadcasting** — send one message to multiple agents simultaneously
@@ -462,13 +464,185 @@ To configure the pipeline, use Claude Code inside the VM:
 cd ~/workspace && claude
 ```
 
-Example:
+The executive team is configured in `openclaw.json`:
+```json
+{
+  "agents": {
+    "list": [
+      { "id": "muddy",        "default": true },
+      { "id": "elon" },
+      { "id": "gary" },
+      { "id": "warren" },
+      { "id": "memory-agent" }
+    ]
+  },
+  "channels": {
+    "discord": {
+      "enabled": true,
+      "bindings": [{ "agentId": "muddy" }]
+    }
+  }
+}
 ```
-Configure multi-agent orchestration in openclaw.json:
-- coordinator role: main/orchestrator, listens on Discord
-- writer, researcher, editor: leaf agents, local only
-- enable registerDiscordSubagentHooks so each sub-agent gets its own Discord thread
+
+Only Muddy is bound to Discord. The others are spawned by Muddy internally.
+
+---
+
+## The Executive Team
+
+Each agent has its own workspace directory with identity files that define who they are and how they work.
+
+### Workspace structure per agent
+
 ```
+~/openclaw-workspace/.openclaw/
+├── workspace/           ← Muddy (COO) — shared team workspace
+│   ├── SOUL.md          ← who Muddy is, business mission
+│   ├── USER.md          ← Michiel's profile + company context
+│   ├── AGENTS.md        ← delegation rules, team overview, meeting protocols
+│   ├── TOOLS.md         ← available tools, Discord channel IDs, file paths
+│   ├── HEARTBEAT.md     ← periodic checklist (check tasks.json, C-Suite Chat)
+│   ├── c-suite-chat.jsonl  ← async team communication log
+│   ├── tasks.json       ← task queue for autonomous processing
+│   ├── standups.json    ← executive meeting archive
+│   └── projects.json    ← gateway registry for Mission Control
+├── workspace-elon/      ← Elon (CTO)
+│   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
+├── workspace-gary/      ← Gary (CMO)
+│   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
+├── workspace-warren/    ← Warren (CRO)
+│   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
+└── workspace-memory-agent/
+    └── AGENTS.md        ← memory storage/retrieval instructions
+```
+
+### Setting up a new team
+
+1. **Configure `openclaw.json`** — list all agents, bind one to Discord:
+```json
+{
+  "agents": {
+    "list": [
+      { "id": "muddy", "default": true },
+      { "id": "elon" }, { "id": "gary" }, { "id": "warren" },
+      { "id": "memory-agent" }
+    ]
+  }
+}
+```
+
+2. **Create workspace directories** (already included in the Quick Start `mkdir -p` command)
+
+3. **Write identity files per agent** — at minimum `SOUL.md` (who are you?) and `AGENTS.md` (how do you work?). The faster path: use Claude Code to generate them from your business context:
+```
+Generate SOUL.md and AGENTS.md for an agent named "elon" — CTO role —
+based on this company description: [paste your context]
+```
+
+4. **Register in `projects.json`** — add the `"agents"` array to show the correct team in Mission Control (otherwise it scans the filesystem and may show old agent directories):
+```json
+{
+  "projects": [{
+    "id": "main",
+    "agents": ["muddy", "elon", "gary", "warren", "memory-agent"]
+  }]
+}
+```
+
+5. **Set the delegation trigger** — configure Muddy's AGENTS.md with the rules for when he delegates vs. executes himself. See [Inter-Agent Communication](#inter-agent-communication) below.
+
+---
+
+## Inter-Agent Communication
+
+Muddy has three ways to communicate with the team. Each has a specific use case.
+
+### 1. `sessions_spawn` — delegate a task (fire & forget)
+
+Use this to start a task with a specific agent. The agent works independently; the result comes back automatically when done.
+
+```javascript
+sessions_spawn({
+  agentId: "gary",          // elon | gary | warren | memory-agent
+  task: "Schrijf een welkomsttekst voor nieuwe gasten — warm en professioneel",
+  mode: "run",              // "run" = one-off task (default)
+  thread: true              // true = progress visible in Discord thread
+})
+```
+
+**`thread: true` vs omitting:**
+| Situation | Use |
+|-----------|-----|
+| Longer task, Michiel wants to see progress | `thread: true` |
+| Quick background task | omit |
+
+**After spawning: do NOT poll.** Sub-agents report back automatically. Only send the final reply when all completions have arrived.
+
+### 2. `sessions_send` — message to active session
+
+Use this when an agent is already active (existing session) and you want to send a follow-up without starting a new spawn. Use `sessions_list` to see active sessions.
+
+```javascript
+sessions_send({
+  sessionKey: "elon",
+  message: "Elon, voeg ook mobiele laadtijd toe aan de audit.",
+  timeoutSeconds: 0         // 0 = fire-and-forget
+})
+```
+
+**`sessions_send` vs `sessions_spawn`:**
+- Agent has an open session → `sessions_send`
+- No active session or isolated task needed → `sessions_spawn`
+
+### 3. C-Suite Chat — shared async channel
+
+A shared JSONL log for the entire executive team. Write here for status updates, decisions, or notes that don't require immediate action.
+
+**File:** `~/openclaw-workspace/.openclaw/workspace/c-suite-chat.jsonl`
+
+**Format (one JSON object per line, always append):**
+```json
+{"ts":"2026-03-23T10:00:00Z","from":"muddy","to":"all","message":"Standup gepland voor morgen 09:00."}
+{"ts":"2026-03-23T10:05:00Z","from":"warren","to":"all","message":"Concurrentieanalyse klaar. Rapport: content/research/analyse.md"}
+```
+
+**`to` options:** `"all"` for everyone, or specific agentId (`"elon"`, `"gary"`, `"warren"`, `"michiel"`)
+
+Agents read the last lines at session startup for team context. Always append to the end, never overwrite.
+
+### 4. Delegation rule — the "doe het nu" trigger
+
+Muddy's AGENTS.md configures two modes:
+
+| Message from Michiel | Muddy's behavior |
+|----------------------|-----------------|
+| `"Schrijf een samenvatting van onze B&B"` | Delegates to Gary |
+| `"Schrijf een samenvatting van onze B&B, doe het nu"` | Muddy executes himself |
+
+**Rule:** Muddy always delegates — staying available for you while the team executes. Only when a message ends with the exact words `"doe het nu"` does Muddy execute the task himself without delegating.
+
+Configure this in `workspace/AGENTS.md`:
+```
+## Delegatieregel
+
+- Muddy delegeert ALLES aan elon, gary, warren of memory-agent
+- Uitzondering: als het bericht eindigt met "doe het nu" → Muddy voert zelf uit
+- Bij delegeren: schrijf GEEN eigen versie eerst. Zeg alleen wat je delegeert aan wie.
+```
+
+### 5. Executive Standups — automated meeting cadence
+
+Two recurring meetings are pre-configured in `cron/jobs.json`:
+
+| Meeting | Schedule | Tags |
+|---------|----------|------|
+| Daily Executive Sync | Mon–Fri 08:30 Amsterdam | `daily` |
+| Weekly Planning | Sunday 09:30 Amsterdam | `weekly`, `planning` |
+
+Each meeting runs 3 rounds: status → discussion → decisions. The transcript is saved to `standups.json` and a summary is sent to Discord `#daily-digest`.
+
+Tasks assigned during discussions are visible in `tasks.json` and processed by the hourly `task-checker` cron job.
 
 ---
 
@@ -928,38 +1102,46 @@ openclaw-sandbox/
 ├── .claude/                      # Claude Code auth
 ├── .npm-global/                  # Global npm packages incl. claude binary
 ├── .env                          # Secrets: Discord token, API keys (Gemini/OpenAI)
-├── .openclaw/                    # Orchestrator gateway state (port 18789)
+├── .openclaw/                    # Main gateway state (port 18789)
 │   ├── agents/*/sessions/        # JSONL session logs per agent
-│   ├── cron/jobs.json            # Scheduled tasks incl. memory-extractor (23:00)
-│   └── workspace/
-│       ├── SOUL.md / USER.md / IDENTITY.md / AGENTS.md
-│       ├── MEMORY.md             # Curated long-term memory
-│       ├── projects.json         # Gateway registry for Mission Control
-│       └── memory/               # Hybrid memory store
-│           ├── YYYY-MM-DD.md     # Daily extraction notes (auto-generated)
-│           ├── projects/
-│           │   ├── goals.md
-│           │   └── decisions.md
-│           ├── preferences/
-│           │   ├── writing-style.md
-│           │   └── tools.md
-│           └── facts.db          # SQLite: research_facts + content_pieces
-├── project-a/                    # Project-A gateway (port 18790)
-│   └── .openclaw/
-│       ├── openclaw.json         # coordinator-a config, port 18790
-│       └── workspace/
-│           ├── SOUL.md / USER.md
-│           └── memory/           # Isolated memory — never mixed with orchestrator
+│   ├── cron/jobs.json            # Scheduled tasks (daily sync 08:30, weekly 09:30, task-checker, memory-extractor 23:00)
+│   ├── workspace/                # ← Muddy (COO) workspace + shared team files
+│   │   ├── SOUL.md               # Muddy's identity and business mission
+│   │   ├── USER.md               # Michiel's profile + company context
+│   │   ├── AGENTS.md             # Delegation rules, team overview, meeting protocols
+│   │   ├── TOOLS.md              # Available tools, Discord channel IDs, file paths
+│   │   ├── HEARTBEAT.md          # Periodic checklist (check tasks.json, C-Suite Chat)
+│   │   ├── c-suite-chat.jsonl    # Async team communication log (JSONL, append-only)
+│   │   ├── tasks.json            # Task queue for autonomous processing
+│   │   ├── standups.json         # Executive meeting archive
+│   │   ├── projects.json         # Gateway registry + explicit agent list for Mission Control
+│   │   └── memory/               # Hybrid memory store
+│   │       ├── YYYY-MM-DD.md     # Daily extraction notes (auto-generated 23:00)
+│   │       └── facts.db          # SQLite: research_facts + content_pieces
+│   ├── workspace-elon/           # Elon (CTO) workspace
+│   │   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
+│   ├── workspace-gary/           # Gary (CMO) workspace
+│   │   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
+│   ├── workspace-warren/         # Warren (CRO) workspace
+│   │   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
+│   └── workspace-memory-agent/   # Memory agent workspace
+│       └── AGENTS.md             # Memory storage/retrieval instructions
 ├── .openclaw-bundled-plugins/    # Plugin overlay (74 plugins, workaround for Nix)
-├── content/                      # Agent output — files written by the pipeline
+├── content/                      # Agent output — files written by the team
+│   ├── articles/                 # Blog posts, articles
+│   ├── newsletters/              # Newsletters, digests
+│   ├── research/                 # Research reports
+│   ├── scripts/                  # Scripts, transcripts
+│   └── other/                    # Other output
 └── dashboard/                    # Mission Control (Next.js, port 3333)
-    ├── src/app/                  # Pages: / /office /projects /schedules /memory /docs
+    ├── src/app/                  # Pages: / /office /projects /schedules /memory /docs /standup
     ├── src/app/api/feed/         # SSE stream with ?port= gateway selector
     ├── src/app/api/projects/     # Gateway registry + live TCP port checks
     ├── src/app/api/memory/       # Sessions, markdown files, folder browser
     ├── src/app/api/memory/facts/ # SQLite facts.db via Python sqlite3
     ├── src/app/api/memory/search/# Full-text search across all memory sources
     ├── src/app/api/schedules/    # CRUD for cron jobs.json
+    ├── src/app/api/standups/     # Executive standup CRUD (GET/POST/PATCH/DELETE)
     ├── src/app/api/docs/         # Content file browser
     └── src/lib/gateway.ts        # WebSocket client (challenge-response protocol)
 ```
@@ -1070,15 +1252,15 @@ De volledige agent-tier mapping:
 
 | Agent | Model | Tier | Gebruik | Kosten |
 |---|---|---|---|---|
-| `editor` | ollama/qwen3.5:9b | 1 | Formatteren, edits, structuur | **gratis** |
 | `memory-agent` | ollama/qwen3.5:9b | 1 | Memory extractie, cron-taken | **gratis** |
 | *(Ollama offline)* | *claude-haiku-4-5* | *2* | *Automatische fallback* | *~4× goedkoper* |
-| `coordinator` | claude-sonnet-4-6 | 3 | Orchestratie, planning, complexe redenering | 1× (baseline) |
-| `writer` | claude-sonnet-4-6 | 3 | Artikelen, creatief schrijven | 1× |
-| `researcher` | claude-sonnet-4-6 | 3 | Multi-stap research, bronanalyse | 1× |
+| `muddy` | claude-sonnet-4-6 | 3 | Orchestratie, delegatie, planning | 1× (baseline) |
+| `elon` | claude-sonnet-4-6 | 3 | Technische architectuur, infra, security | 1× |
+| `gary` | claude-sonnet-4-6 | 3 | Content strategie, brand, creatief | 1× |
+| `warren` | claude-sonnet-4-6 | 3 | Revenue, groei, community, partnerships | 1× |
 | `escalation-agent` | claude-opus-4-6 | 4 | Alleen bij expliciete escalatie | 5× |
 
-**Praktisch effect:** editor en memory-agent verwerken samen ~40–60% van alle sub-agent taken. Als die gratis draaien op Ollama, dalen de cloud kosten significant — zonder verlies van kwaliteit voor eenvoudige taken.
+**Praktisch effect:** memory-agent verwerkt alle achtergrond-memory taken gratis op Ollama. De executive agents (Muddy/Elon/Gary/Warren) draaien op Sonnet — de coordinator overhead is laag omdat Muddy snel delegeert en zelf weinig uitvoert.
 
 <details>
 <summary><strong>Ollama instellen — vereisten en config</strong></summary>
@@ -1193,17 +1375,18 @@ OpenClaw laadt alle identity files (SOUL.md, AGENTS.md, etc.) als systeem-prompt
 
 ```
 ❌ Monolithisch (duur):
-   Coordinator weet alles: research + schrijven + geheugen + planning
+   Één agent weet alles: research + schrijven + geheugen + planning + techniek
    → 1 agent, 300k+ context, Sonnet-prijs voor alles
 
-✅ Multi-agent (efficiënt):
-   Coordinator: orchestreert alleen (20k context)
-   Writer:      schrijft alleen, eigen kleine AGENTS.md
-   Researcher:  zoekt alleen, eigen kleine AGENTS.md
-   Memory-agent: memory-taken op Haiku (4× goedkoper)
+✅ Executive team (efficiënt):
+   Muddy (COO):   orchestreert + delegeert (klein context, snel)
+   Elon (CTO):    technische taken, eigen workspace-elon/AGENTS.md
+   Gary (CMO):    content taken, eigen workspace-gary/AGENTS.md
+   Warren (CRO):  revenue taken, eigen workspace-warren/AGENTS.md
+   Memory-agent:  memory-taken op Ollama (gratis)
 ```
 
-Elke agent heeft zijn eigen `workspace-{id}/AGENTS.md` met alleen de instructies die relevant zijn voor zijn taak. De overhead per agent is kleiner dan die van één alleskunner.
+Elke agent heeft zijn eigen `workspace-{id}/AGENTS.md` met alleen de instructies die relevant zijn voor zijn rol. De overhead per agent is kleiner dan die van één alleskunner.
 
 ---
 
@@ -1316,6 +1499,128 @@ Bespaard vs Haiku:  $0.04
 - Ollama rapporteert geen cache tokens (geen prompt caching API) — dit is normaal; cache in de Cloud tabel zijn uitsluitend Anthropic cache reads
 
 Als editor en memory-agent zwaar draaien (bulk content pipelines, intensieve cron jobs) zie je de Local share groeien en de "Bespaard vs Haiku" bedrag oplopen. Bij een grote pipeline (100k+ lokale tokens) kan dit al snel $0.10–$0.50 per run besparen.
+
+---
+
+## Lessons Learned
+
+Things that will trip you up. All of these have been encountered and solved in this repo.
+
+### 1. Cron jobs do NOT go in `openclaw.json`
+
+The most common cause of gateway crash loops when setting up schedules.
+
+**Wrong — gateway crashes with `Unrecognized key: "jobs"`:**
+```json
+{
+  "cron": {
+    "enabled": true,
+    "jobs": [...]   ← THIS IS NOT VALID
+  }
+}
+```
+
+**Correct — jobs go in a separate file:**
+```
+~/openclaw-workspace/.openclaw/cron/jobs.json
+```
+
+The `cron` block in `openclaw.json` only accepts global settings (`enabled`, `maxConcurrentRuns`, `sessionRetention`). All jobs are defined in `cron/jobs.json`.
+
+If the gateway is already in a crash loop:
+```bash
+tail -50 /tmp/openclaw-gateway.log   # ← find the error
+# edit .openclaw/openclaw.json and remove the invalid key
+sudo systemctl restart openclaw-gateway
+```
+
+---
+
+### 2. Old agent directories intercept Discord messages
+
+If you rename or replace your coordinator agent (e.g., `coordinator` → `muddy`), Discord messages will still go to the old agent if its session directory still exists.
+
+**Why:** Openclaw routes new Discord messages to persisted sessions. An old `agents/coordinator/` directory with a saved Discord session (`agent:coordinator:discord:channel:...`) intercepts all messages — even after you update `bindings` in `openclaw.json`.
+
+**Fix:** rename or archive the old agent directory:
+```bash
+mv .openclaw/agents/coordinator .openclaw/agents/coordinator_archived
+sudo systemctl restart openclaw-gateway
+```
+
+**Verify:** check `journalctl -u openclaw-gateway -f` and send a test message on Discord. You should see the new agent responding, not the old one.
+
+---
+
+### 3. The Discord bot name comes from the Developer Portal, not your config
+
+Changing an agent's display name in `SOUL.md` or `AGENTS.md` won't rename the bot in Discord. The bot's visible name (`OpenClaw Agent` or whatever it shows as) is set in the [Discord Developer Portal](https://discord.com/developers/applications) under your bot's settings.
+
+Your AGENTS.md instructions ("you are Muddy") work — the agent identifies itself correctly in conversations. The Discord sidebar name is a separate platform setting.
+
+---
+
+### 4. Agent answers itself before delegating
+
+When Muddy receives a task, he may write his own answer first and then spawn a subagent — defeating the purpose of delegation.
+
+**Cause:** the instruction "delegate everything" needs to be explicit about the order of operations.
+
+**Fix in `workspace/AGENTS.md`:**
+```
+Bij delegeren: schrijf GEEN eigen versie eerst.
+Zeg alleen kort wat je doet en aan wie je delegeert.
+Wacht op het resultaat van de subagent en stuur dat terug.
+
+✅ Correct: "Dat is een taak voor Gary. Ik zet hem erop." → wacht → stuur Gary's resultaat
+❌ Fout: eerst zelf een antwoord schrijven, daarna pas delegeren
+```
+
+---
+
+### 5. The Office pixel art shows old agent names
+
+If you replace agents (e.g., `coordinator` → team of 5), Mission Control's Office view may still show the old names because it scans the `agents/` filesystem directory.
+
+**Fix:** add an explicit `agents` list to `workspace/projects.json`:
+```json
+{
+  "projects": [{
+    "id": "main",
+    "name": "Logies op Dreef",
+    "agents": ["muddy", "elon", "gary", "warren", "memory-agent"]
+  }]
+}
+```
+
+Also update the Projects API to use this list when present (already done in this repo):
+```typescript
+// src/app/api/projects/route.ts
+const agents = p.agents ?? getAgents(p.stateDir)
+```
+
+---
+
+### 6. Gateway log is at `/tmp/openclaw-gateway.log`
+
+Not in `journalctl`. The systemd service redirects stdout/stderr to this file. When debugging crashes:
+```bash
+tail -50 /tmp/openclaw-gateway.log
+```
+
+`journalctl -u openclaw-gateway` only shows service start/stop events, not gateway errors.
+
+---
+
+### 7. Context7 is the fastest way to debug OpenClaw config
+
+When you're not sure whether a config key exists or what it's called, use Context7 from inside the VM:
+```bash
+cd /home/agent/workspace && claude
+# then ask: "use context7 — what are the valid keys under agents.defaults?"
+```
+
+This queries the live OpenClaw docs and saves you from trial-and-error crash loops.
 
 ---
 
@@ -1476,6 +1781,29 @@ If the gateway is already in a crash loop, run `openclaw doctor --fix` inside th
 cd /home/agent/workspace/.openclaw && openclaw doctor --fix
 sudo systemctl restart openclaw-gateway
 ```
+
+</details>
+
+<details>
+<summary>Muddy delegates to the wrong agent / old coordinator keeps responding</summary>
+
+An old agent directory with a persisted Discord session intercepts all incoming messages. See [Lessons Learned — #2](#2-old-agent-directories-intercept-discord-messages) for the full explanation and fix.
+
+Quick fix:
+```bash
+mv ~/openclaw-workspace/.openclaw/agents/coordinator \
+   ~/openclaw-workspace/.openclaw/agents/coordinator_archived
+sudo systemctl restart openclaw-gateway
+```
+
+</details>
+
+<details>
+<summary>Gateway crashes immediately after adding cron jobs</summary>
+
+You likely added jobs inside the `cron` block in `openclaw.json`. See [Lessons Learned — #1](#1-cron-jobs-do-not-go-in-openclawingjson).
+
+Move all job definitions to `~/openclaw-workspace/.openclaw/cron/jobs.json` and remove the `jobs` array from `openclaw.json`.
 
 </details>
 
