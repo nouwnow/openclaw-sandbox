@@ -531,13 +531,55 @@ Claude past `flake.nix` aan → `nix build` → reboot → nieuwe configuratie a
 
 ---
 
-## Services beheren
+## VM starten en stoppen
+
+De VM wordt handmatig gestart in twee aparte terminals vanuit `~/openclaw-sandbox/`:
+
+**Terminal 1 — virtiofs daemon (gedeelde bestanden host ↔ VM):**
+```bash
+./result/bin/virtiofsd-run
+```
+
+**Terminal 2 — VM zelf:**
+```bash
+./result/bin/microvm-run
+```
+
+Volgorde: virtiofsd-run **altijd eerst**, dan microvm-run. Stoppen: Ctrl+C in terminal 2 (VM), dan Ctrl+C in terminal 1 (virtiofsd).
+
+### VM herstarten na `nix build` (flake.nix wijziging)
+
+```bash
+# 1. Bouw nieuwe runner (op de host, vanuit ~/openclaw-sandbox)
+nix build
+
+# 2. Stop de VM: Ctrl+C in terminal 2 (microvm-run), dan Ctrl+C in terminal 1 (virtiofsd-run)
+
+# 3. Start opnieuw (terminals 1 en 2 zoals hierboven)
+./result/bin/virtiofsd-run   # terminal 1
+./result/bin/microvm-run     # terminal 2
+
+# 4. Plugin overlay herbouwen — op de HOST met host-pad als override
+# (script gebruikt /home/agent/workspace intern, dat bestaat niet op de host)
+OPENCLAW_BUNDLED_PLUGINS_DIR=/home/michiel/openclaw-workspace/.openclaw-bundled-plugins \
+  ~/openclaw-sandbox/build-plugin-overlay.sh
+
+# 5. Gateway herstarten — in de VM
+sudo systemctl restart openclaw-gateway
+```
+
+> **Let op:** `result/` is een symlink die na `nix build` naar de nieuwe runner wijst.
+> De stap `build-plugin-overlay.sh` is alleen nodig als de openclaw package zelf is bijgewerkt.
+
+---
+
+## Services beheren (binnen de VM)
 
 ```bash
 # Status
-sudo systemctl status openclaw-gateway openclaw-writer openclaw-researcher openclaw-editor
+sudo systemctl status openclaw-gateway
 
-# Herstarten (bijv. na .env wijziging)
+# Herstarten (bijv. na openclaw.json wijziging)
 sudo systemctl restart openclaw-gateway
 
 # Logs

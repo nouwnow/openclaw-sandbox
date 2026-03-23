@@ -554,6 +554,106 @@ based on this company description: [paste your context]
 
 ---
 
+## Browser Tool & WordPress Integration
+
+Each agent can interact with the WordPress staging site (`www.logiesopdreef.nl`) using three complementary tools: the OpenClaw managed browser, the WordPress REST API, and the WooCommerce/Matomo APIs. All actions go through the **staging site only** — production is never touched.
+
+### Tool selection per task type
+
+| Task | Tool |
+|------|------|
+| Visual page check, layout review | OpenClaw managed browser (headless Chromium) |
+| Read/create/update posts (draft) | WordPress REST API |
+| Bookings, orders, customers | WooCommerce REST API |
+| Analytics, traffic, conversions | Matomo API |
+
+### OpenClaw browser configuration
+
+The browser tool is configured in `openclaw.json` with a managed `openclaw` profile (headless Chromium, CDP port 18800) and SSRF policy set to allow the private `10.0.1.1` network. The staging site uses a self-signed cert — `--ignore-certificate-errors` is passed automatically.
+
+```json
+"browser": {
+  "enabled": true,
+  "defaultProfile": "openclaw",
+  "headless": true,
+  "executablePath": "/run/current-system/sw/bin/chromium",
+  "extraArgs": ["--ignore-certificate-errors"],
+  "ssrfPolicy": { "dangerouslyAllowPrivateNetwork": true },
+  "profiles": {
+    "openclaw": { "cdpPort": 18800, "color": "#FF4500" }
+  }
+}
+```
+
+A persistent WordPress login is saved as Playwright storageState in `.openclaw/wp-staging-auth.json`. This file is generated once on the host using `wp-login.mjs` (requires Playwright — NixOS VMs can't run dynamically linked binaries).
+
+### NixOS-specific setup
+
+- `chromium` added to `environment.systemPackages` in `flake.nix` (provides the binary path agents need)
+- `networking.hosts = { "10.0.1.1" = [ "www.logiesopdreef.nl" ]; }` in `flake.nix` (VM DNS resolution to host)
+- No socat or port forwarding needed — Local WP already binds ports 80/443 on `0.0.0.0`
+
+### Agent domain boundaries
+
+| Agent | WordPress domain | Read freely | Needs approval |
+|-------|-----------------|-------------|----------------|
+| **Elon** (CTO) | Technical: plugins, themes, performance | WP settings, error logs, plugin status | Plugin installs, PHP/server changes |
+| **Gary** (CMO) | Content: posts, pages, media, SEO | Posts, pages, media library | Create/publish posts, SEO metadata changes |
+| **Warren** (CRO) | Data: bookings, customers, analytics | Orders, customers, Matomo stats | Change bookings, modify pricing, create vouchers |
+
+All agents write content as `draft` first — never direct `publish` without Michiel's approval.
+
+See [PRD-v4-browser-usage.md](PRD-v4-browser-usage.md) for full browser architecture, tool selection rules, and setup checklists.
+
+---
+
+## Lab Decision Board
+
+The **Lab Decision Board** is the approval workflow between agents and Michiel. Agents propose changes; Michiel approves them from the Mission Control dashboard before execution.
+
+### Workflow
+
+```
+Agent proposes → [proposed]
+Michiel approves → [in_progress]  (gateway notification sent to Muddy)
+Agent executes → [review]
+Michiel reviews → [done]
+
+If blocked: [blocked] with reason
+If rejected: [cancelled] with feedback
+```
+
+### Task schema (`agent-tasks.json`)
+
+```json
+{
+  "id": "<uuid>",
+  "status": "proposed",
+  "priority": "high|medium|low",
+  "title": "Korte omschrijving",
+  "description": "Wat gevonden / wil aanpassen en waarom",
+  "plan": "Welke data, welke actie, wat het effect is",
+  "agent": "gary",
+  "category": "wordpress",
+  "createdAt": "2026-03-23T10:00:00Z"
+}
+```
+
+Tasks are stored in `~/.openclaw/agent-tasks.json`. Each status transition sends a gateway notification to Muddy via `sessions.send`, so the agent team is always informed.
+
+### Lab tab in Mission Control
+
+The `🧪 Lab` tab in the dashboard shows all pending decisions in four sections:
+
+- **NEEDS YOUR DECISION** — proposed tasks waiting for approval
+- **BLOCKED ON YOU** — tasks where the agent needs input before proceeding
+- **READY FOR REVIEW** — completed tasks waiting for Michiel's sign-off
+- **IN PROGRESS** — tasks currently being executed
+
+Filter by agent (elon/gary/warren) and priority (high/medium/low). Collapsible history shows done and cancelled tasks.
+
+---
+
 ## Inter-Agent Communication
 
 Muddy has three ways to communicate with the team. Each has a specific use case.
@@ -877,6 +977,19 @@ Document viewer for all files the agents have created:
 
 Agents save output to `~/workspace/content/{category}/YYYY-MM-DD_{agent}_{slug}.md`.
 
+### Tab 7 — 🧪 Lab (Decision Board)
+
+The Lab tab is Michiel's approval interface for all agent-proposed changes:
+
+- **NEEDS YOUR DECISION** — proposed tasks waiting for approval (🚀 approve button)
+- **BLOCKED ON YOU** — tasks paused, agent waiting for input
+- **READY FOR REVIEW** — tasks completed by the agent, awaiting sign-off
+- **IN PROGRESS** — tasks currently being executed
+- **Filter** by agent (elon / gary / warren) and priority (high / medium / low)
+- **Inline feedback** — add feedback before approving or rejecting
+- **History** — collapsible done/cancelled log with delete button
+- **Auto-refresh** every 30 seconds; each status change triggers a gateway notification to Muddy
+
 ---
 
 ### Setup
@@ -1096,7 +1209,8 @@ openclaw-sandbox/
 ├── nix-store-rw.img              # Writable ext4 overlay for /nix/store in VM
 ├── README.md                     # This file
 ├── OPENCLAW-SETUP.md             # Openclaw + Discord + multi-agent setup guide
-└── PRD-v2-orchestrator-memory.md # Full PRD: multi-project + hybrid memory (6 phases)
+├── PRD-v2-orchestrator-memory.md # Full PRD: multi-project + hybrid memory (6 phases)
+└── PRD-v4-browser-usage.md       # Full PRD: browser tool setup, WP integration, SSRF config
 
 ~/openclaw-workspace/             # Persistent state (virtiofs, survives VM reboots)
 ├── .claude/                      # Claude Code auth
@@ -1105,10 +1219,13 @@ openclaw-sandbox/
 ├── .openclaw/                    # Main gateway state (port 18789)
 │   ├── agents/*/sessions/        # JSONL session logs per agent
 │   ├── cron/jobs.json            # Scheduled tasks (daily sync 08:30, weekly 09:30, task-checker, memory-extractor 23:00)
+│   ├── wp-staging-auth.json      # Playwright storageState — persistent WP admin login
+│   ├── wp-login.mjs              # One-time login script (run on host, generates auth.json)
+│   ├── agent-tasks.json          # Lab Decision Board — proposed/in_progress/review/done tasks
 │   ├── workspace/                # ← Muddy (COO) workspace + shared team files
 │   │   ├── SOUL.md               # Muddy's identity and business mission
 │   │   ├── USER.md               # Michiel's profile + company context
-│   │   ├── AGENTS.md             # Delegation rules, team overview, meeting protocols
+│   │   ├── AGENTS.md             # Delegation rules, team overview, WP routing rules
 │   │   ├── TOOLS.md              # Available tools, Discord channel IDs, file paths
 │   │   ├── HEARTBEAT.md          # Periodic checklist (check tasks.json, C-Suite Chat)
 │   │   ├── c-suite-chat.jsonl    # Async team communication log (JSONL, append-only)
@@ -1134,8 +1251,10 @@ openclaw-sandbox/
 │   ├── scripts/                  # Scripts, transcripts
 │   └── other/                    # Other output
 └── dashboard/                    # Mission Control (Next.js, port 3333)
-    ├── src/app/                  # Pages: / /office /projects /schedules /memory /docs /standup
+    ├── src/app/                  # Pages: / /office /projects /schedules /memory /docs /standup /lab
+    ├── src/app/lab/              # Lab Decision Board (proposed/blocked/review/done/cancelled)
     ├── src/app/api/feed/         # SSE stream with ?port= gateway selector
+    ├── src/app/api/agent-tasks/  # Lab Decision Board CRUD + gateway notifications
     ├── src/app/api/projects/     # Gateway registry + live TCP port checks
     ├── src/app/api/memory/       # Sessions, markdown files, folder browser
     ├── src/app/api/memory/facts/ # SQLite facts.db via Python sqlite3

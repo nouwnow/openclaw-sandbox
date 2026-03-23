@@ -37,6 +37,11 @@
           networking.defaultGateway = { address = "10.0.1.1"; interface = "eth0"; };
           networking.useNetworkd   = false;
           networking.nameservers   = [ "1.1.1.1" "8.8.8.8" ];
+          # Lokale staging site (Local WP op host) bereikbaar vanuit VM
+          # Host luistert al op 0.0.0.0:80/443 — alleen DNS-oplossing nodig
+          networking.hosts = {
+            "10.0.1.1" = [ "www.logiesopdreef.nl" ];
+          };
           system.stateVersion      = "23.11";
 
           # ── MicroVM ────────────────────────────────────────────
@@ -90,6 +95,7 @@
             python311 nodejs_20 corepack_20
             curl git gh ffmpeg
             openclaw   # batteries-included: gateway + Discord + alle extensies
+            chromium   # browser tool voor openclaw managed profile
           ];
 
           virtualisation.docker.enable = true;

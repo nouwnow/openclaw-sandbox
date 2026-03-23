@@ -53,7 +53,7 @@ for plugin_dir in "$EXTENSIONS"/*/; do
   if [[ -f "$plugin_dir/openclaw.plugin.json" ]]; then
     manifest="$plugin_dir/openclaw.plugin.json"
   else
-    found=$(find /nix/store -path "*/packages/extensions/$plugin/openclaw.plugin.json" 2>/dev/null | head -1 || true)
+    found=$(find /nix/store -path "*/extensions/$plugin/openclaw.plugin.json" 2>/dev/null | head -1 || true)
     if [[ -n "$found" ]]; then
       manifest="$found"
     fi
@@ -66,6 +66,7 @@ for plugin_dir in "$EXTENSIONS"/*/; do
     continue
   fi
 
+  rm -f "$out/openclaw.plugin.json"
   cp "$manifest" "$out/openclaw.plugin.json"
 
   # ESM wrapper voor index.js
