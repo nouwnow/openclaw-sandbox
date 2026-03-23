@@ -264,8 +264,10 @@ See [OPENCLAW-SETUP.md](OPENCLAW-SETUP.md) for the full step-by-step configurati
 
 ## Daily Use
 
+### VM opstarten
+
 ```bash
-# Terminal 1 — filesystem bridge (keep open)
+# Terminal 1 — filesystem bridge (open laten)
 ./result/bin/virtiofsd-run
 
 # Terminal 2 — VM console
@@ -273,11 +275,44 @@ See [OPENCLAW-SETUP.md](OPENCLAW-SETUP.md) for the full step-by-step configurati
 # login: agent / agent
 ```
 
-Check the agent:
+### Gateway status & logs
+
+Je hebt twee gateways draaien. De **hoofdgateway** verwerkt Discord en het team. De **project-A gateway** is een aparte context op poort 18790.
+
 ```bash
-# In the VM
+# Hoofdgateway (Discord + Muddy + team)
 sudo systemctl status openclaw-gateway
 tail -f /tmp/openclaw-gateway.log
+
+# Project-A gateway (aparte context, poort 18790)
+sudo systemctl status openclaw-gateway-project-a
+journalctl -u openclaw-gateway-project-a -f
+```
+
+### Gateways herstarten
+
+```bash
+sudo systemctl restart openclaw-gateway
+sudo systemctl restart openclaw-gateway-project-a
+```
+
+### Dashboard
+
+Het Mission Control dashboard draait als systemd service en is bereikbaar op poort 3000:
+
+```bash
+sudo systemctl status openclaw-dashboard
+# Open in browser: http://10.0.1.2:3333
+```
+
+### Agentlogs live volgen
+
+```bash
+# Hoofdgateway — korte tail
+tail -50 /tmp/openclaw-gateway.log
+
+# Project-A — via journalctl
+journalctl -u openclaw-gateway-project-a --since "1 hour ago"
 ```
 
 ---
@@ -1731,7 +1766,34 @@ tail -50 /tmp/openclaw-gateway.log
 
 ---
 
-### 7. Context7 is the fastest way to debug OpenClaw config
+### 8. Elke gateway heeft eigen auth per agent
+
+Als je meerdere gateways draait (bijv. hoofdgateway + project-A gateway), heeft elke gateway zijn eigen `agents/` directory. Een agent die in één gateway een `auth-profiles.json` heeft, heeft dat **niet automatisch** in de andere gateway.
+
+**Symptoom:** Discord-berichten geven een foutmelding zoals:
+```
+Agent failed before reply: No API key found for provider "anthropic".
+Auth store: /home/agent/workspace/project-a/.openclaw/agents/muddy/agent/auth-profiles.json
+```
+Het antwoord komt toch nog — de hoofdgateway handelt het af na de mislukte poging — maar de foutmelding is zichtbaar in Discord.
+
+**Wat er gebeurt:** wanneer Muddy (hoofdgateway) een bericht verwerkt, probeert hij ook een instantie op te starten in de project-A gateway voor cross-project coördinatie. Die instantie mist de auth.
+
+**Fix:**
+```bash
+# Kopieer auth van hoofdgateway naar project-A gateway
+cp /home/agent/workspace/.openclaw/agents/muddy/agent/auth-profiles.json \
+   /home/agent/workspace/project-a/.openclaw/agents/muddy/agent/auth-profiles.json
+
+# Herstart de project-A gateway (leest auth opnieuw in)
+sudo systemctl restart openclaw-gateway-project-a
+```
+
+**Let op:** de project-A gateway cachet auth bij opstart. Alleen het kopiëren van het bestand is niet voldoende — een herstart is vereist.
+
+---
+
+### 9. Context7 is the fastest way to debug OpenClaw config
 
 When you're not sure whether a config key exists or what it's called, use Context7 from inside the VM:
 ```bash
