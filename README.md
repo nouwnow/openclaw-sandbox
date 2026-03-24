@@ -1508,7 +1508,37 @@ OpenClaw laadt alle identity files (SOUL.md, AGENTS.md, etc.) als systeem-prompt
 
 > Limieten verhoogd van 12.000/40.000 naar 20.000/80.000 na analyse — de defaults zijn 20.000/150.000. Subagents ontvangen alleen AGENTS.md en TOOLS.md, de coordinator krijgt alle bootstrap-bestanden.
 
-#### Laag 5 — Minimal promptmodus voor subagents (beschikbaar, bewust niet geïmplementeerd)
+#### Laag 5 — Per-agent thinking budget (geconfigureerd ✅)
+
+Elke agent heeft een eigen denkniveau. Hogere thinking levels genereren meer interne redeneerTokens vóór het antwoord — beter voor complexe taken, maar duurder. Door het niveau af te stemmen op de rol van de agent bespaar je tokens zonder kwaliteitsverlies.
+
+```json
+"agents": {
+  "defaults": {
+    "thinkingDefault": "medium"
+  },
+  "list": [
+    {
+      "id": "muddy",
+      "params": { "thinking": "low" }
+    }
+  ]
+}
+```
+
+| Agent | Thinking level | Reden |
+|-------|---------------|-------|
+| `muddy` (coordinator) | `low` | Routeert en delegeert — diep redeneren is niet nodig |
+| `elon`, `gary`, `warren` | `medium` (via defaults) | Inhoudelijke taken profiteren van uitgebreid redeneren |
+| `memory-agent` | — | Ollama ondersteunt geen thinking |
+
+**Geldige waarden:** `minimal` · `low` · `medium` · `high` · `xhigh` · `adaptive`
+
+`adaptive` laat het model zelf beslissen (standaard voor Claude 4.6 zonder expliciete config). `medium` is een goede balans tussen kwaliteit en kosten voor de meeste taken.
+
+> **Let op:** `thinkingDefault` werkt alleen op `agents.defaults` niveau. Per-agent override werkt via `params.thinking` in `agents.list`. Proberen `thinkingDefault` op agent-lijst-niveau te zetten geeft "Unrecognized key" in de gateway log.
+
+#### Laag 6 — Minimal promptmodus voor subagents (beschikbaar, bewust niet geïmplementeerd)
 
 `promptMode: minimal` werkt in de huidige versie — de crashloop van v2026.3.14 is opgelost. Het verwijdert Skills, Memory Recall, Heartbeats, Messaging en Reply Tags uit de subagent system prompt.
 
