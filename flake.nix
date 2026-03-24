@@ -24,7 +24,7 @@
           # Openclaw is gemarkeerd als insecure (LLM-toegang tot systeem).
           # We draaien het bewust geïsoleerd in een MicroVM.
           nixpkgs.config.permittedInsecurePackages = [
-            "openclaw-2026.3.12"
+            "openclaw-2026.3.23"
           ];
           nixpkgs.overlays = [ nix-openclaw.overlays.default ];
 
@@ -92,7 +92,7 @@
 
           # ── Packages ───────────────────────────────────────────
           environment.systemPackages = with pkgs; [
-            python311 nodejs_20 corepack_20
+            python311 nodejs_22
             curl git gh ffmpeg
             openclaw   # batteries-included: gateway + Discord + alle extensies
             chromium   # browser tool voor openclaw managed profile
@@ -169,10 +169,8 @@
             after       = [ "network.target" ];
             wantedBy    = [ "multi-user.target" ];
             environment = {
-              OPENCLAW_STATE_DIR    = "/home/agent/workspace/project-a/.openclaw";
-              CLAWDBOT_STATE_DIR    = "/home/agent/workspace/project-a/.openclaw";
-              OPENCLAW_CONFIG_PATH  = "/home/agent/workspace/project-a/.openclaw/openclaw.json";
-              CLAWDBOT_CONFIG_PATH  = "/home/agent/workspace/project-a/.openclaw/openclaw.json";
+              OPENCLAW_STATE_DIR   = "/home/agent/workspace/project-a/.openclaw";
+              OPENCLAW_CONFIG_PATH = "/home/agent/workspace/project-a/.openclaw/openclaw.json";
             };
             serviceConfig = {
               User             = "agent";
@@ -195,7 +193,7 @@
             after       = [ "network.target" "openclaw-gateway.service" ];
             wantedBy    = [ "multi-user.target" ];
             # npm scripts draaien via sh — zorg dat bash + node in PATH zitten
-            path        = [ pkgs.bash pkgs.nodejs_20 pkgs.coreutils pkgs.python3 ];
+            path        = [ pkgs.bash pkgs.nodejs_22 pkgs.coreutils pkgs.python3 ];
             environment = {
               GATEWAY_URL = "ws://127.0.0.1:18789";
               NODE_ENV    = "production";
@@ -204,8 +202,8 @@
               User             = "agent";
               WorkingDirectory = "/home/agent/workspace/dashboard";
               # Bouw eerst, start daarna — output gaat naar systemd journal
-              ExecStartPre     = "${pkgs.nodejs_20}/bin/npm run build";
-              ExecStart        = "${pkgs.nodejs_20}/bin/npm run start";
+              ExecStartPre     = "${pkgs.nodejs_22}/bin/npm run build";
+              ExecStart        = "${pkgs.nodejs_22}/bin/npm run start";
               Restart          = "on-failure";
               RestartSec       = "5s";
               StandardOutput   = "journal";

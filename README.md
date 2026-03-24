@@ -1656,6 +1656,249 @@ Als editor en memory-agent zwaar draaien (bulk content pipelines, intensieve cro
 
 ---
 
+## Updating OpenClaw
+
+This section documents how to update the OpenClaw version in this NixOS MicroVM setup. It covers the full process including tips and pitfalls specific to this stack.
+
+---
+
+### Before you start — always backup first
+
+Run the backup script before any update. It stops the VM cleanly, backs up everything, and tells you what to do next:
+
+```bash
+cd ~/openclaw-sandbox && ./backup.sh
+```
+
+Backup lands in `~/Documents/OpenClaw-Backup/YYYY-MM-DD/`. Includes `nix-store-rw.img` (4GB VM disk), all workspace state, configs, memory, and sessions.
+
+> **Do not skip this.** A failed `nix build` mid-way leaves your `result/` symlink broken and you can't restart the VM until you either fix it or restore from backup.
+
+---
+
+### Step 1 — Check what's breaking before touching anything
+
+Start the VM and run doctor with the correct config path (the CLI looks in `~/.openclaw/` by default, but in Nix mode the config lives in the workspace):
+
+```bash
+# In the VM:
+OPENCLAW_CONFIG_PATH=/home/agent/workspace/.openclaw/openclaw.json openclaw doctor
+```
+
+Note any warnings. This is your baseline — you'll run doctor again after the update to compare.
+
+Also check all services are green before you start:
+
+```bash
+sudo systemctl status openclaw-gateway openclaw-gateway-project-a openclaw-dashboard --no-pager
+tail -5 /tmp/openclaw-gateway.log
+```
+
+Expected: all `active (running)`, gateway log ends with `logged in to discord as ...`.
+
+---
+
+### Step 2 — Read the changelog for breaking changes
+
+Check the OpenClaw GitHub releases for breaking changes between your current version and target version. For each breaking change, check:
+
+1. Does it affect `flake.nix` (env vars, Node.js version, package names)?
+2. Does it affect `openclaw.json` (deprecated keys, renamed fields)?
+3. Does it affect the plugin overlay (new plugins, removed plugins)?
+
+**This stack's known gotchas:**
+
+| Pattern | What to check |
+|---------|--------------|
+| `CLAWDBOT_*` or `MOLTBOT_*` env vars in `flake.nix` | Rename to `OPENCLAW_*` equivalents |
+| `nodejs_XX` in `flake.nix` | Update if minimum Node.js version changed |
+| `permittedInsecurePackages` version string | Must match the exact new version number |
+| `thinkingDefault` in `openclaw.json` | Was a crasher pre-2026.3.23; now safe via `thinkingBudget` per agent |
+
+---
+
+### Step 3 — Edit `flake.nix` on the host
+
+Apply all required changes to `~/openclaw-sandbox/flake.nix` before running `nix build`. Doing them one-by-one doesn't save you rebuilds — `nix build` is needed after every change anyway.
+
+**Always update these together:**
+
+```nix
+# 1. permittedInsecurePackages — must match exact new version
+nixpkgs.config.permittedInsecurePackages = [
+  "openclaw-2026.X.XX"   # ← new version here
+];
+
+# 2. nodejs version — check OpenClaw release notes for minimum
+environment.systemPackages = with pkgs; [
+  python311 nodejs_22   # update major version if required
+  ...
+];
+
+# 3. Dashboard service — all three nodejs references
+path        = [ pkgs.bash pkgs.nodejs_22 pkgs.coreutils pkgs.python3 ];
+ExecStartPre = "${pkgs.nodejs_22}/bin/npm run build";
+ExecStart    = "${pkgs.nodejs_22}/bin/npm run start";
+```
+
+Verify your edits with:
+
+```bash
+grep -n "permittedInsecure\|nodejs_\|corepack\|CLAWDBOT\|MOLTBOT" ~/openclaw-sandbox/flake.nix
+```
+
+Expected output: only `nodejs_XX` references (no old version), no `CLAWDBOT_*` or `MOLTBOT_*`.
+
+---
+
+### Step 4 — Update the flake and build
+
+```bash
+cd ~/openclaw-sandbox
+
+# Pull the new OpenClaw version into flake.lock
+nix flake update nix-openclaw
+
+# Build — this rebuilds the VM runner, systemd units, etc.
+# Typically 15 derivations, ~2 minutes if openclaw package itself hasn't changed
+nix build 2>&1 | tee /tmp/nix-build.log
+```
+
+The `warning: Git tree is dirty` is normal — it's because `flake.nix` has uncommitted changes.
+
+If `nix build` fails with `insecure package` error: the version string in `permittedInsecurePackages` doesn't match what Nix reports. Copy the exact string from the error message and update `flake.nix`.
+
+---
+
+### Step 5 — Rebuild the plugin overlay (critical — don't skip)
+
+After every `nix build`, the Nix store hash changes. The ESM wrapper files in `~/.openclaw-bundled-plugins/` contain absolute Nix store paths that are now stale. Discord will not load if you skip this.
+
+Run from the **host** (not the VM) — the path override is required because the script uses the VM-internal path by default:
+
+```bash
+OPENCLAW_BUNDLED_PLUGINS_DIR=/home/michiel/openclaw-workspace/.openclaw-bundled-plugins \
+  ~/openclaw-sandbox/build-plugin-overlay.sh
+```
+
+Expected output ends with: `Klaar: 74 plugins aangemaakt, 0 overgeslagen.`
+
+If the plugin count drops significantly, check that the new OpenClaw package in the Nix store has an `extensions/` directory.
+
+---
+
+### Step 6 — Stop the VM, start with new build
+
+The VM must be fully restarted to pick up the new `result/` runner.
+
+```bash
+# Stop VM: Ctrl+C in the microvm-run terminal
+# Stop virtiofsd: Ctrl+C in the virtiofsd-run terminal
+
+# Important: kill all virtiofsd processes before restarting
+# Multiple supervisord instances cause socket conflicts (sock.pid locked)
+pkill -9 -f "virtiofsd.*openclaw"; pkill -9 -f "supervisord.*openclaw"; sleep 2
+rm -f ~/openclaw-sandbox/openclaw-agent-virtiofs*.sock
+rm -f ~/openclaw-sandbox/openclaw-agent-virtiofs*.sock.pid
+
+# Start fresh — always from ~/openclaw-sandbox/ (sockets use relative paths)
+# Terminal 1:
+cd ~/openclaw-sandbox && ./result/bin/virtiofsd-run
+
+# Terminal 2 (wait until terminal 1 shows all virtiofsd processes RUNNING):
+cd ~/openclaw-sandbox && ./result/bin/microvm-run
+```
+
+> **Socket conflict pitfall:** If you ever ran `virtiofsd-run` with `nohup` or from the wrong directory, stale `.sock.pid` files lock out new virtiofsd processes. The VM will boot for 60 seconds then fail with `VhostUserConnect: No such file or directory`. Always run the cleanup commands above before restarting.
+
+---
+
+### Step 7 — Verify in the VM
+
+```bash
+# Node.js version
+node --version   # must match what flake.nix specifies
+
+# All services up
+sudo systemctl status openclaw-gateway openclaw-gateway-project-a openclaw-dashboard --no-pager | head -25
+
+# Discord connected
+tail -5 /tmp/openclaw-gateway.log
+# Expected: "logged in to discord as ..."
+
+# Cron jobs intact
+OPENCLAW_CONFIG_PATH=/home/agent/workspace/.openclaw/openclaw.json openclaw cron list
+
+# Run doctor with full config path
+OPENCLAW_CONFIG_PATH=/home/agent/workspace/.openclaw/openclaw.json openclaw doctor --fix
+```
+
+The doctor will report `State directory ~/.openclaw is missing` — this is a **false alarm** in Nix mode. The CLI defaults to `~/.openclaw/` but the gateway correctly uses the workspace path via `OPENCLAW_CONFIG_PATH`.
+
+---
+
+### Step 8 — Handle new required config fields
+
+Each OpenClaw release may introduce new required or recommended fields. After doctor, check for warnings like `field X is unset`. Add them to `openclaw.json` in the VM:
+
+```bash
+# Edit config directly in the VM
+nano /home/agent/workspace/.openclaw/openclaw.json
+
+# Restart gateway to pick up changes
+sudo systemctl restart openclaw-gateway
+sleep 3
+tail -5 /tmp/openclaw-gateway.log
+```
+
+**2026.3.23 added:** `agents.defaults.heartbeat.directPolicy` — set to `"allow"` or `"block"`:
+
+```json
+"heartbeat": {
+  "directPolicy": "allow",
+  ...
+}
+```
+
+---
+
+### Rollback
+
+If anything breaks after the update:
+
+```bash
+# On the host — restore flake.nix from backup
+cp ~/Documents/OpenClaw-Backup/YYYY-MM-DD/openclaw-sandbox/flake.nix ~/openclaw-sandbox/flake.nix
+
+# Rebuild with old version
+cd ~/openclaw-sandbox && nix build
+
+# Rebuild plugin overlay for old version
+OPENCLAW_BUNDLED_PLUGINS_DIR=/home/michiel/openclaw-workspace/.openclaw-bundled-plugins \
+  ~/openclaw-sandbox/build-plugin-overlay.sh
+
+# Restart VM (see Step 6 cleanup above)
+```
+
+If `openclaw.json` was changed in the VM, restore from backup:
+
+```bash
+cp ~/Documents/OpenClaw-Backup/YYYY-MM-DD/openclaw-workspace/.openclaw/openclaw.json \
+   ~/openclaw-workspace/.openclaw/openclaw.json
+```
+
+Then restart the gateway in the VM: `sudo systemctl restart openclaw-gateway`
+
+---
+
+### Update history
+
+| Date | From | To | Notes |
+|------|------|----|-------|
+| 2026-03-24 | 2026.3.14 | 2026.3.23 | nodejs_20→22, CLAWDBOT_* removed, heartbeat.directPolicy added |
+
+---
+
 ## Lessons Learned
 
 Things that will trip you up. All of these have been encountered and solved in this repo.
