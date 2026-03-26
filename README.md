@@ -18,6 +18,37 @@
 
 ---
 
+## Table of Contents
+
+- [Why This Exists](#why-this-exists)
+- [What You Get](#what-you-get)
+- [Architecture](#architecture)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Daily Use](#daily-use)
+- [How the Filesystem Bridge Works](#how-the-filesystem-bridge-works)
+- [Multi-Agent Pipeline](#multi-agent-pipeline)
+- [The Executive Team](#the-executive-team)
+- [Browser Tool & WordPress Integration](#browser-tool--wordpress-integration)
+- [Lab Decision Board](#lab-decision-board)
+- [Inter-Agent Communication](#inter-agent-communication)
+- [Hybride Memory & Multi-Project Orchestratie](#hybride-memory--multi-project-orchestratie)
+- [Mission Control Dashboard](#mission-control-dashboard)
+- [Data Layer & Script-Driven Skills](#data-layer--script-driven-skills)
+- [Configuration](#configuration)
+- [Persistent Network](#persistent-network)
+- [Project Structure](#project-structure)
+- [Model Optimalisatie & Token Efficiency](#model-optimalisatie--token-efficiency)
+- [Updating OpenClaw](#updating-openclaw)
+- [Lessons Learned](#lessons-learned)
+- [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
+- [Support](#support)
+- [Related Projects](#related-projects)
+
+---
+
 ## Why This Exists
 
 [Openclaw](https://github.com/openclaw/openclaw) is a powerful multi-agent AI platform — but it's a complex Node.js application with full system access. Running it directly on your host means trusting a large, opaque codebase with your files, credentials, and network.
@@ -28,6 +59,8 @@ The result: Openclaw's full multi-agent power — a corporate executive team (CO
 
 > **Looking for a simpler single-agent setup?**
 > See [nanoclaw-sandbox](https://github.com/nouwnow/nanoclaw-sandbox) — the same hypervisor isolation pattern for a lightweight Telegram bot.
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
 
 ---
 
@@ -65,6 +98,8 @@ Muddy, vraag Gary om een welkomsttekst voor nieuwe gasten — warm en profession
 Muddy, wat is onze sterkste USP voor zakelijke reizigers? doe het nu
 Muddy, laat Elon de website auditen op laadtijd en SEO
 ```
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
 
 ---
 
@@ -110,6 +145,8 @@ Discord / Mission Control
 
 **Declarative:** The entire VM — packages, services, users, mounts — is defined in `flake.nix`. Rebuild with `nix build`. Version-locked via `flake.lock`.
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
 
 ## Requirements
@@ -120,6 +157,8 @@ Discord / Mission Control
 - **KVM:** required (`/dev/kvm` accessible)
 - **Nix:** with flakes enabled
 - **Accounts:** [Claude Code](https://claude.ai/product/claude-code) subscription (Pro or Max), Discord account
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
 
 ---
 
@@ -156,6 +195,8 @@ sudo ./setup-network.sh
 ```
 
 Then follow [OPENCLAW-SETUP.md](OPENCLAW-SETUP.md) to configure Discord and Anthropic auth.
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
 
 ---
 
@@ -260,6 +301,8 @@ See [OPENCLAW-SETUP.md](OPENCLAW-SETUP.md) for the full step-by-step configurati
 
 </details>
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
 
 ## Daily Use
@@ -314,6 +357,8 @@ tail -50 /tmp/openclaw-gateway.log
 # Project-A — via journalctl
 journalctl -u openclaw-gateway-project-a --since "1 hour ago"
 ```
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
 
 ---
 
@@ -482,6 +527,8 @@ ps aux | grep virtiofsd | grep -v grep | grep "log-level=debug"
 
 </details>
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
 
 ## Multi-Agent Pipeline
@@ -521,6 +568,8 @@ The executive team is configured in `openclaw.json`:
 ```
 
 Only Muddy is bound to Discord. The others are spawned by Muddy internally.
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
 
 ---
 
@@ -587,6 +636,8 @@ based on this company description: [paste your context]
 
 5. **Set the delegation trigger** — configure Muddy's AGENTS.md with the rules for when he delegates vs. executes himself. See [Inter-Agent Communication](#inter-agent-communication) below.
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
 
 ## Browser Tool & WordPress Integration
@@ -640,6 +691,8 @@ All agents write content as `draft` first — never direct `publish` without Mic
 
 See [PRD-v4-browser-usage.md](PRD-v4-browser-usage.md) for full browser architecture, tool selection rules, and setup checklists.
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
 
 ## Lab Decision Board
@@ -686,6 +739,8 @@ The `🧪 Lab` tab in the dashboard shows all pending decisions in four sections
 - **IN PROGRESS** — tasks currently being executed
 
 Filter by agent (elon/gary/warren) and priority (high/medium/low). Collapsible history shows done and cancelled tasks.
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
 
 ---
 
@@ -778,6 +833,8 @@ Two recurring meetings are pre-configured in `cron/jobs.json`:
 Each meeting runs 3 rounds: status → discussion → decisions. The transcript is saved to `standups.json` and a summary is sent to Discord `#daily-digest`.
 
 Tasks assigned during discussions are visible in `tasks.json` and processed by the hourly `task-checker` cron job.
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
 
 ---
 
@@ -911,7 +968,11 @@ Orchestrator stuurt naar Project-A:
 
 Dit betekent dat een herstart van Project-A's gateway nooit invloed heeft op de orchestrator of Project-B.
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
+
+## Mission Control Dashboard
 
 A fully local Next.js dashboard running inside the VM, accessible from your host browser at `http://10.0.1.2:3333`. No cloud, no external services — everything streams directly from Openclaw gateways over WebSocket and SSE.
 
@@ -1162,6 +1223,126 @@ Extract `agentId` from `sessionKey`: `'agent:coordinator:cron:...'` → `split('
 
 See [OPENCLAW-SETUP.md — Stap 9](OPENCLAW-SETUP.md) for the full gateway protocol reference.
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
+---
+
+## Data Layer & Script-Driven Skills
+
+Elon (CTO) runs a growing library of **data skills** — automated Python scripts that pull structured data from external sources and store it as timestamped SQLite snapshots. Agents query these databases directly without triggering live API calls on every request.
+
+### Architecture
+
+```
+WordPress Bridge Plugin          REST API (planned)    MCP (planned)
+        │                               │                    │
+  /wp-json/brain/v1/...          DataforSEO API    Google Search Console
+        │                               │                    │
+  fetch_*.py scripts  ──────────────────┴────────────────────┘
+        │
+   SQLite snapshot DBs
+   workspace/data/*.db
+        │
+  Agents (Elon / Gary / Warren)
+  query via Python sqlite3
+```
+
+**Snapshot model:** each skill runs a Python script that hits the data source and stores one timestamped row per run. Agents query the latest snapshot — or trend multiple snapshots — without touching external systems.
+
+### WordPress Brain Bridge Plugin
+
+The `open-brain-analytics-bridge` plugin exposes structured WordPress-internal data via REST endpoints. It runs on the **staging site** (`www.logiesopdreef.nl`, Local WP on host `10.0.1.1`). The production site (`logiesopdreef.nl`) is never touched.
+
+| Endpoint | Data |
+|----------|------|
+| `/wp-json/brain/v1/vikbooking/bookings` | Reservations, guests, revenue, occupancy |
+| `/wp-json/brain/v1/matomo/summary` | Full analytics: visits, funnel, sources, devices, goals |
+| `/wp-json/brain/v1/matomo/diagnostic` | Table metadata for debugging |
+
+> **Note:** `web_fetch` does not work for `logiesopdreef.nl`. Always use `bash`/`curl` with Basic Auth (`WP_API_USER` / `WP_API_PASSWORD` from `.env`).
+
+### Available Skills
+
+| Skill | Source | SQLite DB | Cron | Agent |
+|-------|--------|-----------|------|-------|
+| `vikbooking-bookings` | VikBooking WP plugin | `data/vikbooking.db` | Mon 08:00 | Elon |
+| `matomo-traffic` | Matomo WP plugin | `data/matomo.db` | Wed 08:00 | Elon |
+| `gsc-search-performance` | Google Search Console MCP | `data/gsc.db` | Tue 08:00 (planned) | Elon |
+| `dataforseo-rankings` | DataforSEO REST API | `data/dataforseo.db` | Fri 08:00 (planned) | Elon |
+
+#### VikBooking Bookings
+
+Pulls all reservations from the VikBooking booking engine. Each snapshot captures: total bookings, revenue, occupancy rate, guest country breakdown, booking channels (direct, Booking.com, etc.), and upcoming check-in/out dates.
+
+**On-demand:**
+```bash
+source /home/agent/workspace/.env
+python3 /home/agent/workspace/.openclaw/workspace/skills/vikbooking-bookings/fetch_bookings.py
+```
+
+#### Matomo Traffic
+
+Pulls site-wide analytics from the Matomo tracking plugin. Each snapshot covers the last 30 days:
+
+- **Traffic metrics:** visits, unique visitors, bounce rate, avg. session duration
+- **Acquisition:** traffic sources, search engines, keywords, social networks, AI assistants
+- **Visitors:** devices, browsers, countries, cities
+- **Behavior:** top pages, entry/exit pages, outlinks
+- **Conversions:** all 5 booking funnel goals + drop-off percentages
+
+**Booking funnel (5 goals):**
+
+| Step | Goal | Trigger |
+|------|------|---------|
+| 1 | Interesse | URL contains `checkin=` |
+| 2a | Intentie (NL) | URL exact `/searchform/` |
+| 2b | Intentie (EN) | URL exact `/en/searchform/` |
+| 3 | Actie | URL contains `task=oconfirm` |
+| 4 | Succes | URL contains `/reservering/` |
+
+**On-demand:**
+```bash
+source /home/agent/workspace/.env
+python3 /home/agent/workspace/.openclaw/workspace/skills/matomo-traffic/fetch_matomo.py
+```
+
+### Skill-Building Playbook
+
+Elon has a **skill-building meta-skill** (`workspace-elon/skills/skill-building/SKILL.md`) that documents how to design, request, and implement new data skills. Every new skill or modification requires a **Lab Decision Board** approval before execution.
+
+**Three data source types:**
+
+| Type | Example Skills | Notes |
+|------|---------------|-------|
+| **A — WordPress Bridge** | VikBooking, Matomo | `curl` via bash, Basic Auth, staging only |
+| **B — REST API** | DataforSEO Rankings | Check API costs per call, note in Lab request |
+| **C — MCP** | Google Search Console | Via agent tool calls, not subprocess |
+
+**Lab Decision Board required for:**
+- Creating or modifying a skill script
+- Adding or changing a cron schedule
+- Adding a new credential or env var
+- Modifying SQLite schema
+
+### Skill File Structure
+
+```
+.openclaw/workspace/skills/{skill-name}/
+├── skill.json           ← cron config, DB path, credentials list, SQL queries
+└── fetch_*.py           ← Python script: data source → SQLite snapshot
+
+.openclaw/workspace-elon/skills/{skill-name}/
+└── SKILL.md             ← Elon's instructions: how to run, schema, queries, output format
+
+.openclaw/workspace/data/
+├── vikbooking.db        ← VikBooking snapshots (Monday, weekly)
+└── matomo.db            ← Matomo traffic snapshots (Wednesday, weekly)
+```
+
+See [PRD-v5-data-layer-skill-automation.md](PRD-v5-data-layer-skill-automation.md) for the full implementation PRD with phases, accepted architecture decisions, and cron schedule.
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
 
 ## Configuration
@@ -1199,6 +1380,8 @@ The Nix store hash changes with each upgrade. Regenerate the plugin overlay:
 sudo systemctl restart openclaw-gateway
 ```
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
 
 ## Persistent Network
@@ -1231,6 +1414,8 @@ sudo systemctl enable --now systemd-networkd
 sudo systemctl restart systemd-networkd
 ```
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
 
 ## Project Structure
@@ -1245,7 +1430,9 @@ openclaw-sandbox/
 ├── README.md                     # This file
 ├── OPENCLAW-SETUP.md             # Openclaw + Discord + multi-agent setup guide
 ├── PRD-v2-orchestrator-memory.md # Full PRD: multi-project + hybrid memory (6 phases)
-└── PRD-v4-browser-usage.md       # Full PRD: browser tool setup, WP integration, SSRF config
+├── PRD-v4-browser-usage.md       # Full PRD: browser tool setup, WP integration, SSRF config
+├── PRD-v5-data-layer-skill-automation.md  # Full PRD: data layer, skills, WordPress bridge
+└── open-brain-analytics-bridge/  # WordPress plugin: REST endpoints for VikBooking + Matomo
 
 ~/openclaw-workspace/             # Persistent state (virtiofs, survives VM reboots)
 ├── .claude/                      # Claude Code auth
@@ -1253,7 +1440,7 @@ openclaw-sandbox/
 ├── .env                          # Secrets: Discord token, API keys (Gemini/OpenAI)
 ├── .openclaw/                    # Main gateway state (port 18789)
 │   ├── agents/*/sessions/        # JSONL session logs per agent
-│   ├── cron/jobs.json            # Scheduled tasks (daily sync 08:30, weekly 09:30, task-checker, memory-extractor 23:00)
+│   ├── cron/jobs.json            # Scheduled tasks (daily sync 08:30, weekly 09:30, task-checker, memory-extractor 23:00, vikbooking Mon 08:00, matomo Wed 08:00)
 │   ├── wp-staging-auth.json      # Playwright storageState — persistent WP admin login
 │   ├── wp-login.mjs              # One-time login script (run on host, generates auth.json)
 │   ├── agent-tasks.json          # Lab Decision Board — proposed/in_progress/review/done tasks
@@ -1272,12 +1459,23 @@ openclaw-sandbox/
 │   │       └── facts.db          # SQLite: research_facts + content_pieces
 │   ├── workspace-elon/           # Elon (CTO) workspace
 │   │   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
+│   │   └── skills/               # Elon's skill library
+│   │       ├── vikbooking-bookings/SKILL.md   # VikBooking query guide + schema
+│   │       ├── matomo-traffic/SKILL.md        # Matomo analytics guide + schema + funnel
+│   │       └── skill-building/SKILL.md        # Meta-skill: how to build new data skills
 │   ├── workspace-gary/           # Gary (CMO) workspace
 │   │   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
 │   ├── workspace-warren/         # Warren (CRO) workspace
 │   │   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
 │   └── workspace-memory-agent/   # Memory agent workspace
 │       └── AGENTS.md             # Memory storage/retrieval instructions
+├── .openclaw/workspace/skills/   # Skill scripts + skill.json configs
+│   ├── vikbooking-bookings/      # fetch_bookings.py + skill.json
+│   ├── matomo-traffic/           # fetch_matomo.py + skill.json
+│   └── skill-building/           # skill.json (reference type, no script)
+├── .openclaw/workspace/data/     # SQLite snapshot databases
+│   ├── vikbooking.db             # VikBooking bookings timeline
+│   └── matomo.db                 # Matomo traffic snapshots
 ├── .openclaw-bundled-plugins/    # Plugin overlay (74 plugins, workaround for Nix)
 ├── content/                      # Agent output — files written by the team
 │   ├── articles/                 # Blog posts, articles
@@ -1299,6 +1497,8 @@ openclaw-sandbox/
     ├── src/app/api/docs/         # Content file browser
     └── src/lib/gateway.ts        # WebSocket client (challenge-response protocol)
 ```
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
 
 ---
 
@@ -1684,6 +1884,8 @@ Bespaard vs Haiku:  $0.04
 
 Als editor en memory-agent zwaar draaien (bulk content pipelines, intensieve cron jobs) zie je de Local share groeien en de "Bespaard vs Haiku" bedrag oplopen. Bij een grote pipeline (100k+ lokale tokens) kan dit al snel $0.10–$0.50 per run besparen.
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
 
 ## Updating OpenClaw
@@ -1927,6 +2129,8 @@ Then restart the gateway in the VM: `sudo systemctl restart openclaw-gateway`
 |------|------|----|-------|
 | 2026-03-24 | 2026.3.14 | 2026.3.23 | nodejs_20→22, CLAWDBOT_* removed, heartbeat.directPolicy added |
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
 
 ## Lessons Learned
@@ -2075,6 +2279,8 @@ cd /home/agent/workspace && claude
 ```
 
 This queries the live OpenClaw docs and saves you from trial-and-error crash loops.
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
 
 ---
 
@@ -2284,6 +2490,8 @@ After this, every reboot will find `~/.claude/claude.json` through the symlink a
 
 </details>
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
 
 ## FAQ
@@ -2319,6 +2527,8 @@ Edit the `nix-openclaw` input in `flake.nix`, run `nix flake update`, then `nix 
 **Can I run this alongside nanoclaw-sandbox?**
 
 Yes. They use different subnets (nanoclaw: `10.0.0.x`, openclaw: `10.0.1.x`), different tap interfaces (`vmtap0` / `vmtap1`), and different vsock CIDs. They can run in parallel.
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
 
 ---
 
@@ -2366,6 +2576,8 @@ Context7 queries the official OpenClaw documentation in real time, so you always
 
 Node.js must be available in the VM (it is — included via NixOS). `npx` downloads `@upstash/context7-mcp` on first use and caches it.
 
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
 ---
 
 ## Related Projects
@@ -2375,6 +2587,8 @@ Node.js must be available in the VM (it is — included via NixOS). `npx` downlo
 | [nanoclaw-sandbox](https://github.com/nouwnow/nanoclaw-sandbox) | Single-agent Telegram bot — same hypervisor isolation, simpler setup |
 | [openclaw/openclaw](https://github.com/openclaw/openclaw) | The Openclaw platform this sandbox runs |
 | [astro/microvm.nix](https://github.com/astro/microvm.nix) | NixOS MicroVM framework |
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
 
 ---
 
