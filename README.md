@@ -32,6 +32,8 @@
 - [The Executive Team](#the-executive-team)
 - [Browser Tool & WordPress Integration](#browser-tool--wordpress-integration)
 - [Lab Decision Board](#lab-decision-board)
+- [Weekly Strategy Sessions](#6-weekly-strategy-sessions--rotating-domain-analysis)
+- [Deterministic Lobster Pipelines](#deterministic-lobster-pipelines)
 - [Inter-Agent Communication](#inter-agent-communication)
 - [Hybride Memory & Multi-Project Orchestratie](#hybride-memory--multi-project-orchestratie)
 - [Mission Control Dashboard](#mission-control-dashboard)
@@ -80,9 +82,10 @@ You (Discord)
     │
     ▼
 Muddy 🐙 — COO (coordinator, always available)
-    ├── Elon  ⚡ CTO  → technical architecture, infrastructure, security
-    ├── Gary  🎯 CMO  → content strategy, brand voice, creative direction
-    ├── Warren 📈 CRO → revenue operations, growth metrics, partnerships
+    ├── Elon   ⚡ CTO    → data sync, infrastructure, WordPress monitoring
+    ├── Dario  🔬 Analyst → technical audits, wiki intelligence, skill-building
+    ├── Gary   🎯 CMO    → content strategy, brand voice, creative direction
+    ├── Warren 📈 CRO    → revenue operations, growth metrics, partnerships
     └── Memory Agent 🧠 → long-term memory storage and retrieval
          │
          ▼
@@ -96,7 +99,7 @@ Muddy **always delegates** — staying available for you while the team executes
 Muddy, laat Warren een concurrentieanalyse doen van onze markt
 Muddy, vraag Gary om een welkomsttekst voor nieuwe gasten — warm en professioneel
 Muddy, wat is onze sterkste USP voor zakelijke reizigers? doe het nu
-Muddy, laat Elon de website auditen op laadtijd en SEO
+Muddy, laat Dario een technische audit uitvoeren op de WordPress plugins
 ```
 
 <sub>[↑ Back to top](#table-of-contents)</sub>
@@ -553,6 +556,7 @@ The executive team is configured in `openclaw.json`:
     "list": [
       { "id": "muddy",        "default": true },
       { "id": "elon" },
+      { "id": "dario" },
       { "id": "gary" },
       { "id": "warren" },
       { "id": "memory-agent" }
@@ -567,7 +571,7 @@ The executive team is configured in `openclaw.json`:
 }
 ```
 
-Only Muddy is bound to Discord. The others are spawned by Muddy internally.
+Only Muddy is bound to Discord. The others are spawned by Muddy internally, or triggered by cron jobs that run **Lobster pipelines** for deterministic weekly analysis. See [Deterministic Lobster Pipelines](#deterministic-lobster-pipelines).
 
 <sub>[↑ Back to top](#table-of-contents)</sub>
 
@@ -581,24 +585,48 @@ Each agent has its own workspace directory with identity files that define who t
 
 ```
 ~/openclaw-workspace/.openclaw/
-├── workspace/           ← Muddy (COO) — shared team workspace
-│   ├── SOUL.md          ← who Muddy is, business mission
-│   ├── USER.md          ← Michiel's profile + company context
-│   ├── AGENTS.md        ← delegation rules, team overview, meeting protocols
-│   ├── TOOLS.md         ← available tools, Discord channel IDs, file paths
-│   ├── HEARTBEAT.md     ← periodic checklist (check tasks.json, C-Suite Chat)
-│   ├── c-suite-chat.jsonl  ← async team communication log
-│   ├── tasks.json       ← task queue for autonomous processing
-│   ├── standups.json    ← executive meeting archive
-│   └── projects.json    ← gateway registry for Mission Control
-├── workspace-elon/      ← Elon (CTO)
-│   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
-├── workspace-gary/      ← Gary (CMO)
-│   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
-├── workspace-warren/    ← Warren (CRO)
-│   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
+├── workspace/                    ← Muddy (COO) — shared team workspace
+│   ├── SOUL.md / USER.md / AGENTS.md / HEARTBEAT.md
+│   ├── c-suite-chat.jsonl        ← async team communication log
+│   ├── standups.json             ← executive meeting archive
+│   ├── projects.json             ← gateway registry for Mission Control
+│   ├── pipelines/                ← Lobster pipeline definitions (.lobster files)
+│   │   ├── daily-executive-sync.lobster    ← weekday 08:30 status aggregation
+│   │   ├── dario-tech-audit.lobster        ← Sunday 14:00 rotating tech audit
+│   │   ├── gary-content-strategy.lobster   ← Friday 14:00 content analysis
+│   │   └── warren-revenue-strategy.lobster ← Wednesday 14:00 revenue analysis
+│   └── scripts/
+│       └── llm-invoke.py         ← relay-plane bridge for LLM calls in pipelines
+├── workspace-elon/               ← Elon (CTO) — data sync & infrastructure
+│   ├── SOUL.md / USER.md / AGENTS.md / AGENTS-reference.md / HEARTBEAT.md
+│   └── skills/
+│       ├── matomo-traffic/       ← Matomo snapshot script (Wednesday 08:00)
+│       ├── vikbooking-bookings/  ← VikBooking snapshot script (Monday 08:00)
+│       ├── warren-revenue-analytics/ ← revenue query interface for Warren
+│       ├── wiki-wp-freshness/    ← WordPress freshness check (Monday 07:00)
+│       ├── wiki-raw-check/       ← raw vs wiki sync check (Monday 07:30)
+│       └── wiki-onderhoud/       ← wiki audit & quality check (Monday 08:00)
+├── workspace-dario/              ← Dario (Senior Analyst) — claude-sonnet-4-6
+│   ├── SOUL.md / USER.md / AGENTS.md / AGENTS-reference.md / IDENTITY.md
+│   └── skills/
+│       ├── dario-tech-audit/     ← 8-week rotating WordPress/infra audit (Lobster)
+│       ├── skill-building/       ← meta-skill: how to build data skills (script-based)
+│       ├── skill-building-lobster/ ← meta-skill: how to build Lobster pipeline skills
+│       ├── wiki-ingest/          ← ingest new content into wiki
+│       ├── wiki-raw-transformeren/ ← raw → wiki transformation
+│       └── wiki-zoek-antwoord/   ← wiki search & answer
+├── workspace-gary/               ← Gary (CMO) — content strategy
+│   ├── SOUL.md / USER.md / AGENTS.md / AGENTS-reference.md / HEARTBEAT.md
+│   └── skills/
+│       ├── gary-content-strategy/ ← 8-week content analysis (Lobster pipeline)
+│       └── gary-content-insights/ ← Matomo content query interface
+├── workspace-warren/             ← Warren (CRO) — revenue strategy
+│   ├── SOUL.md / USER.md / AGENTS.md / AGENTS-reference.md / HEARTBEAT.md
+│   └── skills/
+│       ├── warren-revenue-strategy/ ← 8-week revenue analysis (Lobster pipeline)
+│       └── warren-revenue-analytics/ ← VikBooking + Matomo query interface
 └── workspace-memory-agent/
-    └── AGENTS.md        ← memory storage/retrieval instructions
+    └── AGENTS.md                 ← memory storage/retrieval instructions
 ```
 
 ### Setting up a new team
@@ -609,7 +637,7 @@ Each agent has its own workspace directory with identity files that define who t
   "agents": {
     "list": [
       { "id": "muddy", "default": true },
-      { "id": "elon" }, { "id": "gary" }, { "id": "warren" },
+      { "id": "elon" }, { "id": "dario" }, { "id": "gary" }, { "id": "warren" },
       { "id": "memory-agent" }
     ]
   }
@@ -629,7 +657,7 @@ based on this company description: [paste your context]
 {
   "projects": [{
     "id": "main",
-    "agents": ["muddy", "elon", "gary", "warren", "memory-agent"]
+    "agents": ["muddy", "elon", "dario", "gary", "warren", "memory-agent"]
   }]
 }
 ```
@@ -744,6 +772,115 @@ Filter by agent (elon/gary/warren) and priority (high/medium/low). Collapsible h
 
 ---
 
+## Deterministic Lobster Pipelines
+
+Lobster is OpenClaw's built-in pipeline engine. A `.lobster` file defines a sequence of steps that execute deterministically — outside the agent's context window. The agent only starts the pipeline and reports the result; the intermediate work costs no agent tokens.
+
+### Why pipelines instead of agent turns
+
+Without Lobster, a weekly analysis job runs entirely inside the agent:
+
+```
+Cron trigger → Agent (6,000+ token context)
+  → agent reads SKILL.md instructions
+  → agent decides which API calls to make
+  → agent calls APIs and interprets results
+  → agent asks LLM for analysis (all in same context)
+  → agent writes report
+  Total: 10,000–18,000 agent tokens per run
+```
+
+With Lobster:
+
+```
+Cron trigger → Agent (minimal)
+  → agent calls lobster tool: action "run"
+       Step 1 [shell]: determine week/aspect   (0 LLM tokens)
+       Step 2 [shell]: fetch API/SQLite data    (0 LLM tokens)
+       Step 3 [relay-plane]: LLM analysis       (deepseek, not agent)
+       Step 4 [shell + approval gate]: write results
+  → agent reports summary to Discord
+  Total: ~600 agent tokens per run
+```
+
+### Architecture: the relay-plane proxy
+
+LLM calls in pipelines go directly to the relay-plane on the host — bypassing the gateway entirely:
+
+```
+Agent VM (10.0.1.2)
+  Pipeline step
+    → python3 llm-invoke.py --prompt-env MY_PROMPT
+      → POST http://10.0.2.1:4100/v1/chat/completions
+        → relay-plane (host) → deepseek-chat API
+      ← JSON response
+    stdout: parsed JSON for next step
+```
+
+The `llm-invoke.py` script lives at `workspace/scripts/llm-invoke.py`. It reads JSON from stdin, posts to the relay-plane, and returns JSON to stdout — making it composable with any pipeline step.
+
+> **Critical:** never use `pipeline: llm_task.invoke` in a `.lobster` file. It is structurally incompatible with the gateway's `llm-task` plugin (envelope format mismatch — the plugin returns `{content: [...]}` but Lobster expects `{result: {output: {...}}}`). Always use `command: python3 llm-invoke.py`. See [Lessons Learned #10](#10-llm_taskinvoke-werkt-niet-gebruik-llm-invokepy).
+
+### Pipeline file structure
+
+```yaml
+name: my-pipeline
+description: |
+  What this pipeline does.
+
+steps:
+  - id: step_1_deterministic
+    command: >
+      python3 -c "import json; print(json.dumps({'week': 16}))"
+
+  - id: step_2_llm
+    env:
+      MY_PROMPT: >-
+        Analyse the data and return JSON with key 'result'.
+    command: >
+      python3 /home/agent/workspace/.openclaw/workspace/scripts/llm-invoke.py
+      --prompt-env MY_PROMPT
+    stdin: '$step_1_deterministic.stdout'   # pipe output from step 1
+
+  - id: step_3_write
+    command: |
+      python3 -c "
+      import json, sys
+      data = json.load(sys.stdin)
+      print(json.dumps({'done': True, 'summary': data.get('result')}))
+      "
+    stdin: '$step_2_llm.stdout'
+    approval: required    # pause here — agent sends preview to Michiel
+```
+
+### Active pipelines
+
+| Pipeline | Agent | Data source | LLM task | Cron |
+|---|---|---|---|---|
+| `daily-executive-sync.lobster` | Elon | agent-tasks + c-suite-chat | status aggregation | Mon–Fri 08:30 |
+| `dario-tech-audit.lobster` | Dario | WP REST API (plugins + settings) | technical audit findings | Sun 14:00 |
+| `gary-content-strategy.lobster` | Gary | Matomo SQLite | content improvement proposals | Fri 14:00 |
+| `warren-revenue-strategy.lobster` | Warren | VikBooking + Matomo SQLite | revenue recommendations | Wed 14:00 |
+
+All pipeline files: `workspace/pipelines/*.lobster`
+
+### Building new pipeline skills
+
+Dario has two meta-skills for creating new skills:
+
+| Skill | When to use |
+|---|---|
+| `skill-building` | Script-based data skills: `fetch_*.py` + SQLite + cron |
+| `skill-building-lobster` | Lobster pipeline skills: `.lobster` file + `llm-invoke.py` + approval gate |
+
+Both follow the Lab Decision Board approval process before implementation.
+
+> See [PRD-v9-context-optimalisatie.md](PRD-v9-context-optimalisatie.md) — Deel 3 for the complete implementation guide including architecture diagrams, annotated pipeline example, step-by-step setup for a new OpenClaw environment, and troubleshooting table.
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
+---
+
 ## Inter-Agent Communication
 
 Muddy has three ways to communicate with the team. Each has a specific use case.
@@ -833,6 +970,82 @@ Two recurring meetings are pre-configured in `cron/jobs.json`:
 Each meeting runs 3 rounds: status → discussion → decisions. The transcript is saved to `standups.json` and a summary is sent to Discord `#daily-digest`.
 
 Tasks assigned during discussions are visible in `tasks.json` and processed by the hourly `task-checker` cron job.
+
+### 6. Weekly Strategy Sessions — rotating domain analysis
+
+Each C-suite agent runs a weekly analysis session covering a different strategic aspect every week. The aspect rotates on an **8-week cycle** based on `ISO week number % 8`.
+
+| Session | Agent | Analysis | Meeting | Discord Channel |
+|---------|-------|----------|---------|-----------------|
+| BOT-overleg | Gary (CMO) | Friday 14:00 | Friday 16:00 | `#bot-overleg` |
+| Kompas-Sessie | Warren (CRO) | Wednesday 14:00 | Wednesday 16:00 | `#kompas-sessie` |
+| Blauwdruk-Sessie | Dario (Analyst) | Sunday 14:00 | Sunday 16:00 | `#blauwdruk-sessie` |
+
+**All three analysis sessions run as [Lobster pipelines](#deterministic-lobster-pipelines).** The agent starts the pipeline with a single tool call; the pipeline handles data fetching, LLM analysis (via relay-plane on deepseek-chat), wiki report writing, Lab Board submission, and c-suite-chat — without consuming agent context tokens for the work itself.
+
+**Flow per session:**
+
+```
+14:00  Cron triggers agent (claude-sonnet-4-6)
+         → agent calls lobster tool: action "run", pipeline "<name>.lobster"
+              Lobster stap 1 [deterministisch]: bepaal week/aspect
+              Lobster stap 2 [deterministisch]: haal data op (API/SQLite)
+              Lobster stap 3 [LLM relay-plane]:  genereer 3-5 voorstellen (deepseek)
+              Lobster stap 4 [approval gate ⏸]:  schrijf rapport + c-suite-chat + Lab Board
+         → approval preview → Michiel (#approvals) → goedkeuring
+         → pipeline voltooid, agent rapporteert aan #daily-digest
+         ↓
+16:00  Muddy orchestrates the meeting (cron job)
+         → reads agent's summary from c-suite-chat.jsonl
+         → spawns other agents for cross-domain input
+         → facilitates discussion
+         → publishes meeting summary to Discord
+```
+
+**8-week rotation per agent:**
+
+Gary (CMO) — content strategy:
+
+| Week % 8 | Aspect |
+|----------|--------|
+| 0 | Merkverhaal & Brand Voice |
+| 1 | Accommodatie-content |
+| 2 | Doelgroepen & Messaging |
+| 3 | SEO & Zoekintentie |
+| 4 | Ervaringen & Beleving |
+| 5 | Locatie & Regio-marketing |
+| 6 | Trust & Social Proof |
+| 7 | Conversie-optimalisatie |
+
+Warren (CRO) — revenue strategy:
+
+| Week % 8 | Aspect |
+|----------|--------|
+| 0 | Boekingspatronen & bezetting |
+| 1 | Kanaalmix & revenue per bron |
+| 2 | Prijsstrategie & tarieven |
+| 3 | Conversie-funnel |
+| 4 | Doelgroep-profitabiliteit |
+| 5 | Marktpositie & concurrentie |
+| 6 | Upsell & revenue per verblijf |
+| 7 | Klantretentie & loyaliteit |
+
+Dario (Analyst) — technical audit:
+
+| Week % 8 | Aspect |
+|----------|--------|
+| 0 | WordPress & Plugin Health |
+| 1 | Performance & Core Web Vitals |
+| 2 | Security Posture |
+| 3 | Infrastructure & Uptime |
+| 4 | Technische SEO |
+| 5 | Database & Data-integriteit |
+| 6 | Code Quality & Tech Debt |
+| 7 | Integraties & API-health |
+
+Pipeline skills live in `workspace/pipelines/<name>.lobster`. SKILL.md instruction files live in `workspace-<agent>/skills/<skill>/SKILL.md`. The orchestration skills (bot-overleg, kompas-sessie, blauwdruk-sessie) live in `workspace/skills/` and are executed by Muddy.
+
+> See [PRD-v9-context-optimalisatie.md](PRD-v9-context-optimalisatie.md) — Deel 3 for the full Lobster pipeline implementation rationale, architecture diagrams, and step-by-step setup guide.
 
 <sub>[↑ Back to top](#table-of-contents)</sub>
 
@@ -1229,7 +1442,9 @@ See [OPENCLAW-SETUP.md — Stap 9](OPENCLAW-SETUP.md) for the full gateway proto
 
 ## Data Layer & Script-Driven Skills
 
-Elon (CTO) runs a growing library of **data skills** — automated Python scripts that pull structured data from external sources and store it as timestamped SQLite snapshots. Agents query these databases directly without triggering live API calls on every request.
+Elon (CTO) maintains a library of **data skills** — automated Python scripts that pull structured data from external sources and store it as timestamped SQLite snapshots. Agents query these databases directly without triggering live API calls on every request.
+
+These snapshot databases also feed the [Lobster pipelines](#deterministic-lobster-pipelines): `gary-content-strategy` and `warren-revenue-strategy` read directly from `matomo.db` and `vikbooking.db` during their deterministic data-gather step.
 
 ### Architecture
 
@@ -1308,9 +1523,14 @@ python3 /home/agent/workspace/.openclaw/workspace/skills/matomo-traffic/fetch_ma
 
 ### Skill-Building Playbook
 
-Elon has a **skill-building meta-skill** (`workspace-elon/skills/skill-building/SKILL.md`) that documents how to design, request, and implement new data skills. Every new skill or modification requires a **Lab Decision Board** approval before execution.
+Dario has **two meta-skills** for creating and extending the skill library. Every new skill or modification requires a **Lab Decision Board** approval before execution.
 
-**Three data source types:**
+| Meta-skill | Location | Use for |
+|---|---|---|
+| `skill-building` | `workspace-dario/skills/skill-building/SKILL.md` | Script-based skills: `fetch_*.py` + SQLite snapshot + cron agentTurn |
+| `skill-building-lobster` | `workspace-dario/skills/skill-building-lobster/SKILL.md` | Lobster pipeline skills: `.lobster` file + `llm-invoke.py` + approval gate |
+
+**Three data source types (script-based skills):**
 
 | Type | Example Skills | Notes |
 |------|---------------|-------|
@@ -1319,7 +1539,7 @@ Elon has a **skill-building meta-skill** (`workspace-elon/skills/skill-building/
 | **C — MCP** | Google Search Console | Via agent tool calls, not subprocess |
 
 **Lab Decision Board required for:**
-- Creating or modifying a skill script
+- Creating or modifying a skill script or pipeline
 - Adding or changing a cron schedule
 - Adding a new credential or env var
 - Modifying SQLite schema
@@ -1340,6 +1560,8 @@ Elon has a **skill-building meta-skill** (`workspace-elon/skills/skill-building/
 ```
 
 See [PRD-v5-data-layer-skill-automation.md](PRD-v5-data-layer-skill-automation.md) for the full implementation PRD with phases, accepted architecture decisions, and cron schedule.
+
+For Lobster pipeline skills (analysis + LLM + approval gate), see [PRD-v9-context-optimalisatie.md](PRD-v9-context-optimalisatie.md) — Deel 3.
 
 <sub>[↑ Back to top](#table-of-contents)</sub>
 
@@ -1432,6 +1654,7 @@ openclaw-sandbox/
 ├── PRD-v2-orchestrator-memory.md # Full PRD: multi-project + hybrid memory (6 phases)
 ├── PRD-v4-browser-usage.md       # Full PRD: browser tool setup, WP integration, SSRF config
 ├── PRD-v5-data-layer-skill-automation.md  # Full PRD: data layer, skills, WordPress bridge
+├── PRD-v9-context-optimalisatie.md        # Full PRD: context reduction + Lobster pipelines (Deel 1–3)
 └── open-brain-analytics-bridge/  # WordPress plugin: REST endpoints for VikBooking + Matomo
 
 ~/openclaw-workspace/             # Persistent state (virtiofs, survives VM reboots)
@@ -1457,18 +1680,36 @@ openclaw-sandbox/
 │   │   └── memory/               # Hybrid memory store
 │   │       ├── YYYY-MM-DD.md     # Daily extraction notes (auto-generated 23:00)
 │   │       └── facts.db          # SQLite: research_facts + content_pieces
-│   ├── workspace-elon/           # Elon (CTO) workspace
-│   │   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
-│   │   └── skills/               # Elon's skill library
-│   │       ├── vikbooking-bookings/SKILL.md   # VikBooking query guide + schema
-│   │       ├── matomo-traffic/SKILL.md        # Matomo analytics guide + schema + funnel
-│   │       └── skill-building/SKILL.md        # Meta-skill: how to build new data skills
+│   ├── workspace-elon/           # Elon (CTO) workspace — data sync & infra
+│   │   ├── SOUL.md / USER.md / AGENTS.md / AGENTS-reference.md / TOOLS.md
+│   │   └── skills/               # Elon's skill library (script-driven, SQLite)
+│   │       ├── vikbooking-bookings/SKILL.md
+│   │       ├── matomo-traffic/SKILL.md
+│   │       ├── wiki-wp-freshness/SKILL.md
+│   │       ├── wiki-raw-check/SKILL.md
+│   │       └── wiki-onderhoud/SKILL.md
+│   ├── workspace-dario/          # Dario (Analyst) workspace — claude-sonnet-4-6
+│   │   ├── SOUL.md / USER.md / AGENTS.md / AGENTS-reference.md / IDENTITY.md
+│   │   └── skills/
+│   │       ├── dario-tech-audit/SKILL.md         # 8-week tech audit (Lobster)
+│   │       ├── skill-building/SKILL.md            # Meta: script-based skills
+│   │       ├── skill-building-lobster/SKILL.md    # Meta: Lobster pipeline skills
+│   │       ├── wiki-ingest/SKILL.md
+│   │       ├── wiki-raw-transformeren/SKILL.md
+│   │       └── wiki-zoek-antwoord/SKILL.md
 │   ├── workspace-gary/           # Gary (CMO) workspace
-│   │   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
+│   │   ├── SOUL.md / USER.md / AGENTS.md / AGENTS-reference.md / TOOLS.md
 │   ├── workspace-warren/         # Warren (CRO) workspace
-│   │   ├── SOUL.md / USER.md / AGENTS.md / TOOLS.md / HEARTBEAT.md
+│   │   ├── SOUL.md / USER.md / AGENTS.md / AGENTS-reference.md / TOOLS.md
 │   └── workspace-memory-agent/   # Memory agent workspace
 │       └── AGENTS.md             # Memory storage/retrieval instructions
+├── .openclaw/workspace/pipelines/ # Lobster pipeline definitions
+│   ├── daily-executive-sync.lobster
+│   ├── dario-tech-audit.lobster
+│   ├── gary-content-strategy.lobster
+│   └── warren-revenue-strategy.lobster
+├── .openclaw/workspace/scripts/   # Shared utility scripts
+│   └── llm-invoke.py              # Relay-plane bridge for pipeline LLM calls
 ├── .openclaw/workspace/skills/   # Skill scripts + skill.json configs
 │   ├── vikbooking-bookings/      # fetch_bookings.py + skill.json
 │   ├── matomo-traffic/           # fetch_matomo.py + skill.json
@@ -1763,14 +2004,29 @@ Elke agent heeft een eigen denkniveau. Hogere thinking levels genereren meer int
    → 1 agent, 300k+ context, Sonnet-prijs voor alles
 
 ✅ Executive team (efficiënt):
-   Muddy (COO):   orchestreert + delegeert (klein context, snel)
-   Elon (CTO):    technische taken, eigen workspace-elon/AGENTS.md
-   Gary (CMO):    content taken, eigen workspace-gary/AGENTS.md
-   Warren (CRO):  revenue taken, eigen workspace-warren/AGENTS.md
-   Memory-agent:  memory-taken op Ollama (gratis)
+   Muddy (COO):    orchestreert + delegeert (klein context, snel)
+   Elon (CTO):     data sync, infra — eigen workspace-elon/ (6 focused skills)
+   Dario (Analyst): audits + wiki — claude-sonnet-4-6, eigen workspace-dario/
+   Gary (CMO):     content taken — eigen workspace-gary/
+   Warren (CRO):   revenue taken — eigen workspace-warren/
+   Memory-agent:   memory-taken op Ollama (gratis)
 ```
 
-Elke agent heeft zijn eigen `workspace-{id}/AGENTS.md` met alleen de instructies die relevant zijn voor zijn rol. De overhead per agent is kleiner dan die van één alleskunner.
+Elke agent heeft zijn eigen `workspace-{id}/AGENTS.md` met alleen de instructies die relevant zijn voor zijn rol. Context overhead per agent is ~56% kleiner dan de monolithische situatie (Elon had 11 skills, nu 6 gefocuste). Zie [PRD-v9-context-optimalisatie.md](PRD-v9-context-optimalisatie.md) voor de volledige token-reductieanalyse.
+
+#### Laag 9 — Lobster pipelines voor terugkerende analyses ✅
+
+De grootste contextreductie per run zit niet in het verkleinen van de systeem-prompt, maar in het **verplaatsen van werk uit de agent-context naar deterministisch uitgevoerde pipeline-stappen**:
+
+```
+Vóór (agentTurn):   10.000–18.000 agent-tokens per wekelijkse analyse
+Na (Lobster):            ~600 agent-tokens per run
+LLM-analyse stap:       ~3.500 relay-plane tokens (deepseek, niet agent)
+```
+
+Terugkerende workflows met vaste databronnen (WP API, SQLite) draaien als `.lobster` pipelines. Alleen stappen die echt AI-oordeel vereisen gebruiken de LLM — via `llm-invoke.py` direct naar de relay-plane op deepseek-chat. De agent start de pipeline en rapporteert het resultaat.
+
+Zie [Deterministic Lobster Pipelines](#deterministic-lobster-pipelines) voor de volledige uitleg.
 
 ---
 
@@ -1813,6 +2069,9 @@ De `elk-uur-statuscheck` en `dagelijkse-briefing` waren al op verstandige interv
 | Oplossing | Wat het doet | Status |
 |---|---|---|
 | **Ollama Tier 1** | Editor + memory-agent draaien lokaal op qwen3.5:9b — geen API-kosten | ✅ Geïmplementeerd |
+| **Lobster pipelines** | Wekelijkse analyses buiten agent-context: ~600 vs. 15.000 tokens/run | ✅ Geïmplementeerd (4 pipelines) |
+| **Context-file splits** | AGENTS.md → core + reference, USER.md → core-only voor tech agents | ✅ Geïmplementeerd (Elon, Dario, Gary, Warren) |
+| **Dedicated Dario agent** | Audits + wiki op Sonnet, Elon focus op data sync — kleinere context per agent | ✅ Geïmplementeerd |
 | **Mem0 / native search** | Vervangt groeiende conversation history door gerichte retrieval | Configureerbaar (zie Memory sectie) |
 | **AGENTS.md pruning** | Wekelijks verouderde instructies verwijderen, patronen naar SOUL.md promoveren | Handmatig onderhoud |
 | **Shared KV-cache** | Anthropic werkt aan cache die tussen sessies blijft leven | Roadmap Anthropic |
@@ -1913,11 +2172,28 @@ Backup lands in `~/Documents/OpenClaw-Backup/YYYY-MM-DD/`. Includes `nix-store-r
 Start the VM and run doctor with the correct config path (the CLI looks in `~/.openclaw/` by default, but in Nix mode the config lives in the workspace):
 
 ```bash
-# In the VM:
+# In the VM — OPENCLAW_CONFIG_PATH is required every time:
 OPENCLAW_CONFIG_PATH=/home/agent/workspace/.openclaw/openclaw.json openclaw doctor
 ```
 
-Note any warnings. This is your baseline — you'll run doctor again after the update to compare.
+> **Always include `OPENCLAW_CONFIG_PATH`.** If you run `openclaw doctor` without it, the CLI falls back to `~/.openclaw/` (empty), shows version "2026.3.14 (unknown)", reports "gateway.mode is unset", and asks to generate a new token. This is a false state — answer **No** to any prompts and rerun with the full command above.
+
+**Doctor interactive prompts — always answer these the same way in Nix mode:**
+
+| Prompt | Answer | Why |
+|--------|--------|-----|
+| `Create ~/.openclaw now?` | **No** | Config lives in the workspace (`OPENCLAW_CONFIG_PATH`), not `~/.openclaw/`. Creating it causes confusion. |
+| `Enable bash shell completion?` | **No** | The agent user in the VM doesn't use interactive bash. |
+
+**Expected warnings you can ignore:**
+
+- `This install is not a git checkout. Run openclaw update via your package manager` — normal in Nix mode. OpenClaw is installed via Nix, not git. Do **not** run `openclaw update`; the Nix build handles updates (Steps 3–4).
+- `ERROR: plugin manifest not found: .../extensions/whatsapp/openclaw.plugin.json` (and similar for xai, xiaomi, zalo, etc.) — these plugins are not bundled in your OpenClaw build. Not an error to fix.
+- `Missing env var "DEEPSEEK_API_KEY"` — expected, you don't use DeepSeek.
+- `NODE_COMPILE_CACHE is not set` / `OPENCLAW_NO_RESPAWN is not set` — optional startup optimizations, not blockers.
+- Memory search provider key not found in CLI environment — the gateway has the key; the CLI doesn't. The gateway reports embeddings are ready, so this is fine.
+
+Note any **new** warnings compared to previous runs. This is your baseline — you'll run doctor again after the update to compare.
 
 Also check all services are green before you start:
 
@@ -1953,21 +2229,22 @@ Check the OpenClaw GitHub releases for breaking changes between your current ver
 
 Apply all required changes to `~/openclaw-sandbox/flake.nix` before running `nix build`. Doing them one-by-one doesn't save you rebuilds — `nix build` is needed after every change anyway.
 
-**Always update these together:**
+**For a routine patch update (e.g. 2026.3.23 → 2026.3.31), only one line needs to change:**
 
 ```nix
-# 1. permittedInsecurePackages — must match exact new version
+# permittedInsecurePackages — update to the new version number
 nixpkgs.config.permittedInsecurePackages = [
-  "openclaw-2026.X.XX"   # ← new version here
+  "openclaw-2026.3.31"   # ← was: "openclaw-2026.3.23"
 ];
+```
 
-# 2. nodejs version — check OpenClaw release notes for minimum
-environment.systemPackages = with pkgs; [
-  python311 nodejs_22   # update major version if required
-  ...
-];
+**Only change the Node.js version if the release notes mention a new minimum Node.js requirement.** If needed, update all three references together (they must stay in sync):
 
-# 3. Dashboard service — all three nodejs references
+```nix
+# environment.systemPackages
+python311 nodejs_22   # ← change nodejs_XX here
+
+# openclaw-dashboard service — path, ExecStartPre, ExecStart
 path        = [ pkgs.bash pkgs.nodejs_22 pkgs.coreutils pkgs.python3 ];
 ExecStartPre = "${pkgs.nodejs_22}/bin/npm run build";
 ExecStart    = "${pkgs.nodejs_22}/bin/npm run start";
@@ -1976,10 +2253,10 @@ ExecStart    = "${pkgs.nodejs_22}/bin/npm run start";
 Verify your edits with:
 
 ```bash
-grep -n "permittedInsecure\|nodejs_\|corepack\|CLAWDBOT\|MOLTBOT" ~/openclaw-sandbox/flake.nix
+grep -n "permittedInsecure\|nodejs_\|CLAWDBOT\|MOLTBOT" ~/openclaw-sandbox/flake.nix
 ```
 
-Expected output: only `nodejs_XX` references (no old version), no `CLAWDBOT_*` or `MOLTBOT_*`.
+Expected: the `permittedInsecurePackages` line shows the new version, all `nodejs_XX` references use the same major version, no `CLAWDBOT_*` or `MOLTBOT_*` vars.
 
 ---
 
@@ -2009,8 +2286,7 @@ After every `nix build`, the Nix store hash changes. The ESM wrapper files in `~
 Run from the **host** (not the VM) — the path override is required because the script uses the VM-internal path by default:
 
 ```bash
-OPENCLAW_BUNDLED_PLUGINS_DIR=/home/michiel/openclaw-workspace/.openclaw-bundled-plugins \
-  ~/openclaw-sandbox/build-plugin-overlay.sh
+OPENCLAW_BUNDLED_PLUGINS_DIR=/home/michiel/openclaw-workspace/.openclaw-bundled-plugins ~/openclaw-sandbox/build-plugin-overlay.sh
 ```
 
 Expected output ends with: `Klaar: 74 plugins aangemaakt, 0 overgeslagen.`
@@ -2128,6 +2404,8 @@ Then restart the gateway in the VM: `sudo systemctl restart openclaw-gateway`
 | Date | From | To | Notes |
 |------|------|----|-------|
 | 2026-03-24 | 2026.3.14 | 2026.3.23 | nodejs_20→22, CLAWDBOT_* removed, heartbeat.directPolicy added |
+| 2026-04-10 | 2026.3.23 | 2026.4.10 | VikBooking rooms/summary endpoint added |
+| 2026-04-12 | — | — | Weekly strategy sessions: Gary BOT-overleg (fri), Warren Kompas-Sessie (wed), Elon Blauwdruk-Sessie (sun). 8-week rotation per agent. Skills in workspace-<agent>/skills/. Same 6 skills mirrored to Hermes VM (+2h). System prompt optimized: IDENTITY.md + TOOLS.md stubs, HEARTBEAT.md trimmed to 11 lines. |
 
 <sub>[↑ Back to top](#table-of-contents)</sub>
 
@@ -2267,6 +2545,43 @@ sudo systemctl restart openclaw-gateway-project-a
 ```
 
 **Let op:** de project-A gateway cachet auth bij opstart. Alleen het kopiëren van het bestand is niet voldoende — een herstart is vereist.
+
+---
+
+### 10. `llm_task.invoke` werkt niet — gebruik `llm-invoke.py`
+
+Als je Lobster pipelines bouwt met LLM-stappen, is de verleidelijke keuze `pipeline: llm_task.invoke`. Dit werkt **nooit**.
+
+**Foutmelding:**
+```
+llm_task.invoke received invalid response envelope
+```
+
+**Oorzaak:** Structurele incompatibiliteit. Lobster's `validateResponseEnvelope` verwacht:
+```json
+{"ok": true, "result": {"ok": true, "result": {"output": {"text": "...", "data": {...}}}}}
+```
+De gateway's `llm-task` plugin retourneert:
+```json
+{"content": [{"type": "text", "text": "..."}], "details": {...}}
+```
+Het `result.output` veld bestaat niet. Geen configuratie lost dit op.
+
+**Oplossing — altijd:**
+```yaml
+- id: analyze
+  env:
+    MY_PROMPT: >-
+      Analyseer de data en return JSON...
+  command: >
+    python3 /home/agent/workspace/.openclaw/workspace/scripts/llm-invoke.py
+    --prompt-env MY_PROMPT
+  stdin: '$previous_step.stdout'
+```
+
+`llm-invoke.py` roept de relay-plane direct aan (`http://10.0.2.1:4100/v1/chat/completions`) zonder de gateway. Het verwacht JSON op stdin en schrijft JSON naar stdout — volledig composable met de pipeline pipe-chain.
+
+> Zie [PRD-v9-context-optimalisatie.md](PRD-v9-context-optimalisatie.md) — Deel 3 §19 voor de volledige technische analyse van het incompatibiliteitsprobleem.
 
 ---
 
