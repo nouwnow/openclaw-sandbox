@@ -43,6 +43,7 @@
 - [Project Structure](#project-structure)
 - [Model Optimalisatie & Token Efficiency](#model-optimalisatie--token-efficiency)
 - [Updating OpenClaw](#updating-openclaw)
+- [Pipeline Audit — WRAM Framework](#pipeline-audit--wram-framework-2026-04-15)
 - [Lessons Learned](#lessons-learned)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
@@ -591,19 +592,19 @@ Each agent has its own workspace directory with identity files that define who t
 │   ├── standups.json             ← executive meeting archive
 │   ├── projects.json             ← gateway registry for Mission Control
 │   ├── pipelines/                ← Lobster pipeline definitions (.lobster files)
-│   │   ├── daily-executive-sync.lobster    ← weekday 08:30 status aggregation
-│   │   ├── dario-tech-audit.lobster        ← Sunday 14:00 rotating tech audit
-│   │   ├── gary-content-strategy.lobster   ← Friday 14:00 content analysis
-│   │   └── warren-revenue-strategy.lobster ← Wednesday 14:00 revenue analysis
+│   │   ├── daily-executive-sync.lobster    ← weekday 09:00 status aggregation
+│   │   ├── dario-tech-audit.lobster        ← Sunday 13:00 rotating tech audit
+│   │   ├── gary-content-strategy.lobster   ← Friday 13:00 content analysis
+│   │   └── warren-revenue-strategy.lobster ← Wednesday 13:00 revenue analysis
 │   └── scripts/
 │       └── llm-invoke.py         ← relay-plane bridge for LLM calls in pipelines
 ├── workspace-elon/               ← Elon (CTO) — data sync & infrastructure
 │   ├── SOUL.md / USER.md / AGENTS.md / AGENTS-reference.md / HEARTBEAT.md
 │   └── skills/
-│       ├── matomo-traffic/       ← Matomo snapshot script (Wednesday 08:00)
-│       ├── vikbooking-bookings/  ← VikBooking snapshot script (Monday 08:00)
+│       ├── matomo-traffic/       ← Matomo snapshot script (Sunday 08:05)
+│       ├── vikbooking-bookings/  ← VikBooking snapshot script (Sunday 08:00)
 │       ├── warren-revenue-analytics/ ← revenue query interface for Warren
-│       ├── wiki-wp-freshness/    ← WordPress freshness check (Monday 07:00)
+│       ├── wiki-wp-freshness/    ← WordPress freshness check (Monday 08:30)
 │       ├── wiki-raw-check/       ← raw vs wiki sync check (Monday 07:30)
 │       └── wiki-onderhoud/       ← wiki audit & quality check (Monday 08:00)
 ├── workspace-dario/              ← Dario (Senior Analyst) — claude-sonnet-4-6
@@ -857,10 +858,10 @@ steps:
 
 | Pipeline | Agent | Data source | LLM task | Cron |
 |---|---|---|---|---|
-| `daily-executive-sync.lobster` | Elon | agent-tasks + c-suite-chat | status aggregation | Mon–Fri 08:30 |
-| `dario-tech-audit.lobster` | Dario | WP REST API (plugins + settings) | technical audit findings | Sun 14:00 |
-| `gary-content-strategy.lobster` | Gary | Matomo SQLite | content improvement proposals | Fri 14:00 |
-| `warren-revenue-strategy.lobster` | Warren | VikBooking + Matomo SQLite | revenue recommendations | Wed 14:00 |
+| `daily-executive-sync.lobster` | Elon | agent-tasks + c-suite-chat | status aggregation | Mon–Fri 09:00 |
+| `dario-tech-audit.lobster` | Dario | WP REST API (plugins + settings) | technical audit findings | Sun 13:00 |
+| `gary-content-strategy.lobster` | Gary | Matomo SQLite | content improvement proposals | Fri 13:00 |
+| `warren-revenue-strategy.lobster` | Warren | VikBooking + Matomo SQLite | revenue recommendations | Wed 13:00 |
 
 All pipeline files: `workspace/pipelines/*.lobster`
 
@@ -958,18 +959,57 @@ Configure this in `workspace/AGENTS.md`:
 - Bij delegeren: schrijf GEEN eigen versie eerst. Zeg alleen wat je delegeert aan wie.
 ```
 
-### 5. Executive Standups — automated meeting cadence
+### 5. Weekly Schedule — full overview
 
-Two recurring meetings are pre-configured in `cron/jobs.json`:
+Sunday is the first working day. Saturday is free (no scheduled jobs).
 
-| Meeting | Schedule | Tags |
-|---------|----------|------|
-| Daily Executive Sync | Mon–Fri 08:30 Amsterdam | `daily` |
-| Weekly Planning | Sunday 09:30 Amsterdam | `weekly`, `planning` |
+```
+SUNDAY — Data & Strategy
+  07:00  geheugen-extractie        weekly memory extraction
+  08:00  vikbooking-weekly-sync    booking data snapshot → wiki + Discord
+  08:05  matomo-weekly-sync        traffic data snapshot → wiki + Discord
+  10:00  weekly-planning           week overview using fresh data → wiki + Discord
+  13:00  dario-tech-audit          rotating technical audit (8-week cycle)
+  15:00  weekly-blauwdruk-sessie   synthesis of tech audit → #blauwdruk-sessie
 
-Each meeting runs 3 rounds: status → discussion → decisions. The transcript is saved to `standups.json` and a summary is sent to Discord `#daily-digest`.
+MONDAY — Wiki maintenance & daily start
+  07:00  geheugen-extractie
+  07:30  wiki-raw-check            raw ↔ wiki filesystem sync check
+  08:00  wiki-onderhoud            broken links, orphans, frontmatter audit
+  08:30  wiki-wp-freshness         WordPress content freshness check
+  09:00  daily-executive-sync      daily briefing (Elon, wiki clean)
 
-Tasks assigned during discussions are visible in `tasks.json` and processed by the hourly `task-checker` cron job.
+TUESDAY / THURSDAY — Operations
+  07:00  geheugen-extractie
+  09:00  daily-executive-sync
+
+WEDNESDAY — Revenue direction
+  07:00  geheugen-extractie
+  09:00  daily-executive-sync
+  13:00  warren-revenue-strategy   revenue analysis (8-week aspect rotation)
+  15:00  weekly-kompas-sessie      synthesis → #kompas-sessie
+
+FRIDAY — Content direction
+  07:00  geheugen-extractie
+  09:00  daily-executive-sync
+  13:00  gary-content-strategy     content analysis (8-week aspect rotation)
+  15:00  weekly-bot-overleg        synthesis → #bot-overleg
+
+SATURDAY — Free, nothing scheduled
+
+Every working day (Sun–Fri):
+  07:00–18:00  heartbeat           gateway health check every 55 min
+  07:00–18:00  task-checker        stale task detection every 30 min
+  10:00/14:00/17:00  task-pickup   each agent processes their in_progress tasks
+```
+
+**Producer-consumer pairs** — each analysis session writes to wiki-vault; the meeting pipeline reads from it 2 hours later:
+
+| Analysis (13:00) | Meeting (15:00) | Discord | Wiki path |
+|------------------|-----------------|---------|-----------|
+| `warren-revenue-strategy` | `weekly-kompas-sessie` | `#kompas-sessie` | `agents/warren/revenue-strategy/` |
+| `gary-content-strategy` | `weekly-bot-overleg` | `#bot-overleg` | `agents/gary/content-strategy/` |
+| `dario-tech-audit` | `weekly-blauwdruk-sessie` | `#blauwdruk-sessie` | `agents/dario/tech-audit/` |
 
 ### 6. Weekly Strategy Sessions — rotating domain analysis
 
@@ -977,16 +1017,16 @@ Each C-suite agent runs a weekly analysis session covering a different strategic
 
 | Session | Agent | Analysis | Meeting | Discord Channel |
 |---------|-------|----------|---------|-----------------|
-| BOT-overleg | Gary (CMO) | Friday 14:00 | Friday 16:00 | `#bot-overleg` |
-| Kompas-Sessie | Warren (CRO) | Wednesday 14:00 | Wednesday 16:00 | `#kompas-sessie` |
-| Blauwdruk-Sessie | Dario (Analyst) | Sunday 14:00 | Sunday 16:00 | `#blauwdruk-sessie` |
+| BOT-overleg | Gary (CMO) | Friday 13:00 | Friday 15:00 | `#bot-overleg` |
+| Kompas-Sessie | Warren (CRO) | Wednesday 13:00 | Wednesday 15:00 | `#kompas-sessie` |
+| Blauwdruk-Sessie | Dario (Analyst) | Sunday 13:00 | Sunday 15:00 | `#blauwdruk-sessie` |
 
 **All three analysis sessions run as [Lobster pipelines](#deterministic-lobster-pipelines).** The agent starts the pipeline with a single tool call; the pipeline handles data fetching, LLM analysis (via relay-plane on deepseek-chat), wiki report writing, Lab Board submission, and c-suite-chat — without consuming agent context tokens for the work itself.
 
 **Flow per session:**
 
 ```
-14:00  Cron triggers agent (claude-sonnet-4-6)
+13:00  Cron triggers agent (claude-sonnet-4-6)
          → agent calls lobster tool: action "run", pipeline "<name>.lobster"
               Lobster stap 1 [deterministisch]: bepaal week/aspect
               Lobster stap 2 [deterministisch]: haal data op (API/SQLite)
@@ -995,7 +1035,7 @@ Each C-suite agent runs a weekly analysis session covering a different strategic
          → approval preview → Michiel (#approvals) → goedkeuring
          → pipeline voltooid, agent rapporteert aan #daily-digest
          ↓
-16:00  Muddy orchestrates the meeting (cron job)
+15:00  Muddy orchestrates the meeting (cron job)
          → reads agent's summary from c-suite-chat.jsonl
          → spawns other agents for cross-domain input
          → facilitates discussion
@@ -2406,6 +2446,48 @@ Then restart the gateway in the VM: `sudo systemctl restart openclaw-gateway`
 | 2026-03-24 | 2026.3.14 | 2026.3.23 | nodejs_20→22, CLAWDBOT_* removed, heartbeat.directPolicy added |
 | 2026-04-10 | 2026.3.23 | 2026.4.10 | VikBooking rooms/summary endpoint added |
 | 2026-04-12 | — | — | Weekly strategy sessions: Gary BOT-overleg (fri), Warren Kompas-Sessie (wed), Elon Blauwdruk-Sessie (sun). 8-week rotation per agent. Skills in workspace-<agent>/skills/. Same 6 skills mirrored to Hermes VM (+2h). System prompt optimized: IDENTITY.md + TOOLS.md stubs, HEARTBEAT.md trimmed to 11 lines. |
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
+---
+
+## Pipeline Audit — WRAM Framework (2026-04-15)
+
+An audit of the multi-agent pipeline against the [WRAM framework](AUDIT2-openclaw-pipeline.md) (Workflow · Roles · Artifacts · Rules · Memory). Full results in [`AUDIT2-RESULTATEN-2026-04-15.md`](AUDIT2-RESULTATEN-2026-04-15.md).
+
+**Score: 11 ✅ · 8 ⚠️ · 1 ❌ out of 20 criteria.**
+
+### What was already solid
+
+- Muddy as orchestrator with a documented team, handoff logic (`sessions_spawn`, `sessions_send`, C-Suite Chat), and hard limits in `SOUL.md`
+- 17 deterministic Lobster pipelines with LLM steps isolated via `llm-invoke.py`
+- Lab-approval gates proven in production (blog posts, skills, API tasks)
+- Daily memory extraction writing structured summaries with decisions, blockers, and impact estimates
+- 21 active cron jobs with consistent coverage across daily and weekly operations
+
+### What was improved
+
+Four issues were addressed immediately after the audit:
+
+**1. Idempotentie — data-sync pipelines** (`matomo-weekly-sync.lobster`, `vikbooking-weekly-sync.lobster`)
+
+Both `fetch_data` steps now have a date-based guard: Python checks whether `snapshots` already contains a record with `fetched_at LIKE 'YYYY-MM-DD%'`. If yes, the fetch exits with `{"fetched": false, "reason": "already_synced"}` — preventing duplicate SQLite inserts when a cron job fires twice in one day.
+
+**2. Approval gate threshold — `SOUL.md`**
+
+Added an explicit section "Wat altijd goedkeuring vereist" before the escalation protocol, with five action categories (external publishing, database mutations, side-effecting API calls, etc.) and a tiebreaker rule: when in doubt → stop, create a board entry, inform Michiel.
+
+**3. Memory bootstrap — cron payloads**
+
+Three cron job payloads updated (`daily-executive-sync`, `geheugen-extractie`, `dario-tech-audit-weekly`): each now opens with an instruction to read the most recent file in `workspace-memory-agent/memory/` before starting the pipeline. Cold-start agents no longer skip prior context.
+
+**4. WebSocket-deadlock — documented**
+
+The root cause of the disabled pipeline-to-agent trigger is now documented in `task-checker.lobster` step 2 (gateway session holds the WebSocket, preventing a second send) and in `AGENTS.md` (new section explaining why sub-agents run on their own cron schedule instead of being triggered mid-pipeline).
+
+### What was deprioritized
+
+**Resumable state (the only ❌):** formally a gap, but practically low priority. Most pipelines finish in under 2 minutes; longer LLM-analysis pipelines already pause at `approval: required`, which serves as a de facto checkpoint. Adding a full checkpoint mechanism across 17 pipelines is significant work for limited benefit at this scale. Flagged as nice-to-have once pipelines regularly exceed 10 minutes.
 
 <sub>[↑ Back to top](#table-of-contents)</sub>
 
