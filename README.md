@@ -862,6 +862,17 @@ steps:
 | `dario-tech-audit.lobster` | Dario | WP REST API (plugins + settings) | technical audit findings | Sun 13:00 |
 | `gary-content-strategy.lobster` | Gary | Matomo SQLite | content improvement proposals | Fri 13:00 |
 | `warren-revenue-strategy.lobster` | Warren | VikBooking + Matomo SQLite | revenue recommendations | Wed 13:00 |
+| `geheugen-extractie.lobster` | memory-agent | Session logs + status-log | memory extraction + dedup | Mon–Fri 07:00 |
+| `matomo-weekly-sync.lobster` | Elon | Matomo WP plugin | snapshot → wikivault + Discord | Sun 08:05 |
+| `vikbooking-weekly-sync.lobster` | Elon | VikBooking WP plugin | snapshot → wiki-vault + Discord | Sun 08:00 |
+| `weekly-planning.lobster` | Muddy | wiki-vault data | week overview | Sun 10:00 |
+| `weekly-bot-overleg.lobster` | Muddy | Gary's wiki output | meeting synthesis | Fri 15:00 |
+| `weekly-kompas-sessie.lobster` | Muddy | Warren's wiki output | meeting synthesis | Wed 15:00 |
+| `weekly-blauwdruk-sessie.lobster` | Muddy | Dario's wiki output | meeting synthesis | Sun 15:00 |
+| `project-status-snapshot.lobster` | Muddy | agent-tasks.json | project status → wiki | Fri 18:00 |
+| `lab-board-archive.lobster` | Muddy | agent-tasks.json | lab board → wiki | Fri 18:30 |
+| `memory-weekly-curation.lobster` | memory-agent | daily memory files | week synthesis → archive | Mon 07:15 |
+| `content-output-archiving.lobster` | Muddy | content/research/ | deterministic archiving | Mon 08:00 |
 
 All pipeline files: `workspace/pipelines/*.lobster`
 
@@ -972,10 +983,12 @@ SUNDAY — Data & Strategy
   13:00  dario-tech-audit          rotating technical audit (8-week cycle)
   15:00  weekly-blauwdruk-sessie   synthesis of tech audit → #blauwdruk-sessie
 
-MONDAY — Wiki maintenance & daily start
+MONDAY — Wiki maintenance & archiving & daily start
   07:00  geheugen-extractie
+  07:15  memory-weekly-curation    weekly memory synthesis → memory/archive/YYYY-WNN.md
   07:30  wiki-raw-check            raw ↔ wiki filesystem sync check
   08:00  wiki-onderhoud            broken links, orphans, frontmatter audit
+  08:00  content-output-archiving  research/ → wiki/output/ sync + >60d archiving
   08:30  wiki-wp-freshness         WordPress content freshness check
   09:00  daily-executive-sync      daily briefing (Elon, wiki clean)
 
@@ -989,11 +1002,13 @@ WEDNESDAY — Revenue direction
   13:00  warren-revenue-strategy   revenue analysis (8-week aspect rotation)
   15:00  weekly-kompas-sessie      synthesis → #kompas-sessie
 
-FRIDAY — Content direction
+FRIDAY — Content direction & weekly archiving
   07:00  geheugen-extractie
   09:00  daily-executive-sync
   13:00  gary-content-strategy     content analysis (8-week aspect rotation)
   15:00  weekly-bot-overleg        synthesis → #bot-overleg
+  18:00  project-status-snapshot   project tasks snapshot → wiki/project-status/
+  18:30  lab-board-archive         lab decision board archive → wiki/lab-board/
 
 SATURDAY — Free, nothing scheduled
 
@@ -1122,22 +1137,7 @@ We hebben vier complementaire memory-methoden geïmplementeerd die samen de stan
 | **Extractie-cron** — dagelijks 07:00 (Lobster pipeline) | Automatische samenvatting van sessie-logs + status-log rotatie | ✅ Actief | Geen handwerk — dagelijkse feiten worden automatisch opgeslagen |
 | **Facts DB** — SQLite (VikBooking, Matomo) | Gestructureerde opslag voor domeindata | ✅ Actief | Deterministisch — scripts lezen/schrijven, geen agents |
 
-De native memory search vereist een embedding API key (`GEMINI_API_KEY`, `OPENAI_API_KEY` of `VOYAGE_API_KEY`) in `.env` en deze config in `openclaw.json`:
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "memorySearch": {
-        "enabled": true,
-        "provider": "gemini"
-      }
-    }
-  }
-}
-```
-
-> **Belangrijk:** Configureer `memorySearch` onder `agents.defaults`, **niet** als top-level `memory.search` key — dat is een onbekende key in openclaw 2.x en laat de gateway crashen.
+qmd vereist geen embedding API key — het draait lokaal via de qmd MCP server. Collections worden beheerd in `~/.config/qmd/index.yml`. Na elke `content-output-archiving` pipeline-run wordt automatisch `qmd update + embed` uitgevoerd zodat nieuwe bestanden direct vindbaar zijn.
 
 ---
 
@@ -1194,10 +1194,10 @@ content_pieces (id, title, type, status, path, created_at, agent)
 ```
 
 **Fase 3 — Extractie-cron** *(5 min)*
-Voeg een cron job toe aan `jobs.json` die elke avond om 23:00 sessie-logs leest en `memory/YYYY-MM-DD.md` schrijft.
+Voeg een cron job toe aan `jobs.json` die elke ochtend om 07:00 sessie-logs leest en `memory/YYYY-MM-DD.md` schrijft. De `geheugen-extractie.lobster` pipeline bevat automatische deduplicatie en status-log rotatie.
 
-**Fase 4 — Native Memory Search** *(5 min)*
-Voeg embedding API key toe aan `.env` en `memorySearch` config toe aan `openclaw.json` onder `agents.defaults`.
+**Fase 4 — Wiki-vault + qmd** *(10 min)*
+Configureer qmd collections in `~/.config/qmd/index.yml` en voeg `qmd__query` instructies toe aan AGENTS.md per agent. Geen API key nodig — qmd draait lokaal.
 
 **Fase 5 — Project Gateway** *(30 min, vereist VM rebuild)*
 Voeg `systemd.services.openclaw-gateway-project-a` toe aan `flake.nix` met eigen `stateDir` en poort. Zet `channels.discord.enabled: false` in `project-a/openclaw.json` — project-a wordt aangestuurd via `agentTurn` door de hoofdcoordinator, niet direct vanuit Discord. Beide gateways op dezelfde Discord bot token veroorzaken dubbele responses.
@@ -1704,7 +1704,7 @@ openclaw-sandbox/
 ├── .env                          # Secrets: Discord token, API keys (Gemini/OpenAI)
 ├── .openclaw/                    # Main gateway state (port 18789)
 │   ├── agents/*/sessions/        # JSONL session logs per agent
-│   ├── cron/jobs.json            # Scheduled tasks (daily sync 08:30, weekly 09:30, task-checker, memory-extractor 23:00, vikbooking Mon 08:00, matomo Wed 08:00)
+│   ├── cron/jobs.json            # Scheduled tasks (25 jobs: geheugen-extractie, exec-sync, wiki maintenance, weekly strategy sessions, content archiving, memory curation)
 │   ├── wp-staging-auth.json      # Playwright storageState — persistent WP admin login
 │   ├── wp-login.mjs              # One-time login script (run on host, generates auth.json)
 │   ├── agent-tasks.json          # Lab Decision Board — proposed/in_progress/review/done tasks
@@ -1716,11 +1716,11 @@ openclaw-sandbox/
 │   │   ├── HEARTBEAT.md          # Periodic checklist (check tasks.json, C-Suite Chat)
 │   │   ├── c-suite-chat.jsonl    # Async team communication log (JSONL, append-only)
 │   │   ├── tasks.json            # Task queue for autonomous processing
-│   │   ├── standups.json         # Executive meeting archive
 │   │   ├── projects.json         # Gateway registry + explicit agent list for Mission Control
+│   │   ├── status-log.jsonl      # Heartbeat + pipeline status log (auto-rotatie >500 regels)
 │   │   └── memory/               # Hybrid memory store
-│   │       ├── YYYY-MM-DD.md     # Daily extraction notes (auto-generated 23:00)
-│   │       └── facts.db          # SQLite: research_facts + content_pieces
+│   │       ├── YYYY-MM-DD.md     # Daily extraction notes (auto-generated 07:00)
+│   │       └── archive/          # YYYY-MM.md maandarchief + YYYY-WNN.md weekcuratie
 │   ├── workspace-elon/           # Elon (CTO) workspace — data sync & infra
 │   │   ├── SOUL.md / USER.md / AGENTS.md / AGENTS-reference.md / TOOLS.md
 │   │   └── skills/               # Elon's skill library (script-driven, SQLite)
@@ -1744,11 +1744,17 @@ openclaw-sandbox/
 │   │   ├── SOUL.md / USER.md / AGENTS.md / AGENTS-reference.md / TOOLS.md
 │   └── workspace-memory-agent/   # Memory agent workspace
 │       └── AGENTS.md             # Memory storage/retrieval instructions
-├── .openclaw/workspace/pipelines/ # Lobster pipeline definitions
+├── .openclaw/workspace/pipelines/ # Lobster pipeline definitions (15 pipelines)
 │   ├── daily-executive-sync.lobster
+│   ├── geheugen-extractie.lobster
 │   ├── dario-tech-audit.lobster
 │   ├── gary-content-strategy.lobster
-│   └── warren-revenue-strategy.lobster
+│   ├── warren-revenue-strategy.lobster
+│   ├── weekly-{bot-overleg,kompas-sessie,blauwdruk-sessie,planning}.lobster
+│   ├── matomo-weekly-sync.lobster / vikbooking-weekly-sync.lobster
+│   ├── project-status-snapshot.lobster / lab-board-archive.lobster
+│   ├── memory-weekly-curation.lobster
+│   └── content-output-archiving.lobster
 ├── .openclaw/workspace/scripts/   # Shared utility scripts
 │   └── llm-invoke.py              # Relay-plane bridge for pipeline LLM calls
 ├── .openclaw/workspace/skills/   # Skill scripts + skill.json configs
@@ -1786,7 +1792,7 @@ openclaw-sandbox/
 
 ## Model Optimalisatie & Token Efficiency
 
-Dit systeem is geconfigureerd voor kostenefficiëntie op vier lagen: model tiering, prompt caching, compaction en toekomstige context-reductie via mem0. Deze sectie legt uit waarom dat nodig is, hoe het werkt, en welke keuzes er zijn gemaakt.
+Dit systeem is geconfigureerd voor kostenefficiëntie op negen lagen: model tiering, prompt caching, compaction, bootstrap limieten, thinking budgets, dedicated agents, Lobster pipelines, heartbeat-model en cron-frequentie. Deze sectie legt uit waarom dat nodig is, hoe het werkt, en welke keuzes er zijn gemaakt.
 
 ---
 
@@ -2110,15 +2116,16 @@ De `elk-uur-statuscheck` en `dagelijkse-briefing` waren al op verstandige interv
 | Oplossing | Wat het doet | Status |
 |---|---|---|
 | **Ollama Tier 1** | Editor + memory-agent draaien lokaal op qwen3.5:9b — geen API-kosten | ✅ Geïmplementeerd |
-| **Lobster pipelines** | Wekelijkse analyses buiten agent-context: ~600 vs. 15.000 tokens/run | ✅ Geïmplementeerd (4 pipelines) |
+| **Lobster pipelines** | Wekelijkse analyses buiten agent-context: ~600 vs. 15.000 tokens/run | ✅ Geïmplementeerd (15 pipelines) |
 | **Context-file splits** | AGENTS.md → core + reference, USER.md → core-only voor tech agents | ✅ Geïmplementeerd (Elon, Dario, Gary, Warren) |
 | **Dedicated Dario agent** | Audits + wiki op Sonnet, Elon focus op data sync — kleinere context per agent | ✅ Geïmplementeerd |
-| **Mem0 / native search** | Vervangt groeiende conversation history door gerichte retrieval | Configureerbaar (zie Memory sectie) |
+| **Wiki-vault + qmd** | Semantisch zoeken over 140 wiki-bestanden via `qmd__query` — vervangt SQLite RAG | ✅ Geïmplementeerd (5 collections, 87.5% coverage) |
+| **Memory-weekly-curation** | Wekelijkse synthese van dagelijkse memory-bestanden → patronen + beslissingen | ✅ Geïmplementeerd (maandag 07:15) |
 | **AGENTS.md pruning** | Wekelijks verouderde instructies verwijderen, patronen naar SOUL.md promoveren | Handmatig onderhoud |
 | **Shared KV-cache** | Anthropic werkt aan cache die tussen sessies blijft leven | Roadmap Anthropic |
 | **Context distillation** | Agent vat zichzelf samen na elke sessie (uitbreiding op compaction) | Toekomstig |
 
-**Wanneer mem0 helpt:** zodra je merkt dat de cache read tokens per sessie blijven groeien (zichtbaar in Mission Control Token Efficiency), is mem0 de volgende stap. In plaats van de volledige conversation history te cachen, haalt de agent alleen relevante facts op via `memory_search`. Dit houdt de context klein, ook na honderden sessies.
+**Wanneer qmd helpt:** zodra je merkt dat agents bij elke sessie de volledige MEMORY.md en daily files moeten inladen voor context die maar zelden relevant is, is `qmd__query` de betere aanpak. Agents zoeken dan alleen de specifiek relevante wiki-bestanden op via semantische query — zonder alles vooraf in context te laden.
 
 ---
 
@@ -2461,10 +2468,10 @@ An audit of the multi-agent pipeline against the [WRAM framework](AUDIT2-opencla
 ### What was already solid
 
 - Muddy as orchestrator with a documented team, handoff logic (`sessions_spawn`, `sessions_send`, C-Suite Chat), and hard limits in `SOUL.md`
-- 17 deterministic Lobster pipelines with LLM steps isolated via `llm-invoke.py`
+- 15 deterministic Lobster pipelines with LLM steps isolated via `llm-invoke.py`
 - Lab-approval gates proven in production (blog posts, skills, API tasks)
 - Daily memory extraction writing structured summaries with decisions, blockers, and impact estimates
-- 21 active cron jobs with consistent coverage across daily and weekly operations
+- 25 active cron jobs with consistent coverage across daily and weekly operations
 
 ### What was improved
 
