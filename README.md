@@ -1117,10 +1117,10 @@ We hebben vier complementaire memory-methoden geïmplementeerd die samen de stan
 
 | Methode | Type | Status | Waarde |
 |---|---|---|---|
-| **Folders** — `memory/projects/`, `memory/preferences/` | Markdown bestanden | ✅ Actief | Transparant, altijd beschikbaar bij sessie-start |
-| **Native Memory Search** — `agents.defaults.memorySearch` | Semantische zoekopdracht via Gemini/OpenAI/Voyage embeddings | ✅ Actief | Agent zoekt zelf relevante context op via `memory_search` tool |
-| **Extractie-cron** — dagelijks 23:00 | Automatische samenvatting van sessie-logs | ✅ Actief | Geen handwerk — dagelijkse feiten worden automatisch opgeslagen |
-| **Facts DB** — `memory/facts.db` (SQLite) | Gestructureerde opslag voor feiten en content | ✅ Actief | Exacte queries: "welke artikelen zijn gepubliceerd?" |
+| **Folders** — `MEMORY.md` + `memory/YYYY-MM-DD.md` per agent | Markdown bestanden | ✅ Actief | Transparant, altijd beschikbaar bij sessie-start |
+| **Wiki-vault + qmd** — semantisch zoeken via `qmd__query` | 5 collections, 140 bestanden geïndexeerd | ✅ Actief | Agents zoeken zelf relevante context op — vervangt SQLite RAG |
+| **Extractie-cron** — dagelijks 07:00 (Lobster pipeline) | Automatische samenvatting van sessie-logs + status-log rotatie | ✅ Actief | Geen handwerk — dagelijkse feiten worden automatisch opgeslagen |
+| **Facts DB** — SQLite (VikBooking, Matomo) | Gestructureerde opslag voor domeindata | ✅ Actief | Deterministisch — scripts lezen/schrijven, geen agents |
 
 De native memory search vereist een embedding API key (`GEMINI_API_KEY`, `OPENAI_API_KEY` of `VOYAGE_API_KEY`) in `.env` en deze config in `openclaw.json`:
 
@@ -1176,7 +1176,7 @@ Met isolatie:
 
 ### Implementatiestappen
 
-De volledige implementatie is uitgewerkt in **[PRD-v2-orchestrator-memory.md](PRD-v2-orchestrator-memory.md)** met 6 fases, acceptatiecriteria en exacte commando's. Samenvatting:
+De volledige implementatie is uitgewerkt in **[PRD-v2-orchestrator-memory.md](PRD-v2-orchestrator-memory.md)** met 6 fases, acceptatiecriteria en exacte commando's. Voor de actuele staat van het memory-systeem (audit, bloat-analyse, qmd-coverage, cron-status) zie **[PRD-v10-memory-systeem-audit.md](PRD-v10-memory-systeem-audit.md)**. Samenvatting:
 
 **Fase 1 — Memory Folders** *(15 min)*
 ```bash
@@ -1695,6 +1695,7 @@ openclaw-sandbox/
 ├── PRD-v4-browser-usage.md       # Full PRD: browser tool setup, WP integration, SSRF config
 ├── PRD-v5-data-layer-skill-automation.md  # Full PRD: data layer, skills, WordPress bridge
 ├── PRD-v9-context-optimalisatie.md        # Full PRD: context reduction + Lobster pipelines (Deel 1–3)
+├── PRD-v10-memory-systeem-audit.md        # Full PRD: memory audit, bloat-analyse, qmd-coverage, 25 cron jobs
 └── open-brain-analytics-bridge/  # WordPress plugin: REST endpoints for VikBooking + Matomo
 
 ~/openclaw-workspace/             # Persistent state (virtiofs, survives VM reboots)
