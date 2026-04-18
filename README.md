@@ -1865,7 +1865,7 @@ Bij lange sessies betaal je cache-prijs over 300k+ tokens per beurt. Zonder oplo
 
 ---
 
-### Vier optimalisatielagen (geïmplementeerd)
+### Negen optimalisatielagen (geconfigureerd)
 
 #### Laag 1 — Prompt caching (automatisch ✅)
 Altijd actief. Geen configuratie. Levert 85%+ kostenbesparing op de vaste overhead.
@@ -1876,14 +1876,14 @@ Niet elke taak vereist een cloud model. De escalatieladder — van goedkoop naar
 
 ```
 Tier 1 — Ollama (lokaal, gratis)
-  └── editor, memory-agent → qwen3.5:9b op je eigen GPU
+  └── memory-agent → qwen3.5:9b op je eigen GPU
         │  als Ollama niet bereikbaar is:
         ▼
 Tier 2 — Claude Haiku 4.5 (cloud fallback, ~4× goedkoper dan Sonnet)
         │  als de taak te complex is voor Haiku:
         ▼
 Tier 3 — Claude Sonnet 4.6 (cloud, default)
-  └── coordinator, writer, researcher
+  └── muddy, elon, dario, gary, warren
         │  als de taak onoplosbaar is voor Sonnet:
         ▼
 Tier 4 — Claude Opus 4.6 (cloud, alleen bij expliciete escalatie)
@@ -1898,11 +1898,12 @@ De volledige agent-tier mapping:
 | *(Ollama offline)* | *claude-haiku-4-5* | *2* | *Automatische fallback* | *~4× goedkoper* |
 | `muddy` | claude-sonnet-4-6 | 3 | Orchestratie, delegatie, planning | 1× (baseline) |
 | `elon` | claude-sonnet-4-6 | 3 | Technische architectuur, infra, security | 1× |
+| `dario` | claude-sonnet-4-6 | 3 | Technische audits, wiki-analyse | 1× |
 | `gary` | claude-sonnet-4-6 | 3 | Content strategie, brand, creatief | 1× |
 | `warren` | claude-sonnet-4-6 | 3 | Revenue, groei, community, partnerships | 1× |
 | `escalation-agent` | claude-opus-4-6 | 4 | Alleen bij expliciete escalatie | 5× |
 
-**Praktisch effect:** memory-agent verwerkt alle achtergrond-memory taken gratis op Ollama. De executive agents (Muddy/Elon/Gary/Warren) draaien op Sonnet — de coordinator overhead is laag omdat Muddy snel delegeert en zelf weinig uitvoert.
+**Praktisch effect:** memory-agent verwerkt alle achtergrond-memory taken gratis op Ollama. De executive agents (Muddy/Elon/Dario/Gary/Warren) draaien op Sonnet — de coordinator overhead is laag omdat Muddy snel delegeert en zelf weinig uitvoert.
 
 <details>
 <summary><strong>Ollama instellen — vereisten en config</strong></summary>
@@ -1928,7 +1929,6 @@ OLLAMA_API_KEY=ollama-local   # elke waarde, vereist om provider te registreren
       }
     },
     "list": [
-      { "id": "editor",       "model": "ollama/qwen3.5:9b" },
       { "id": "memory-agent", "model": "ollama/qwen3.5:9b" }
     ]
   },
@@ -1953,7 +1953,7 @@ nvtop   # GPU activity zichtbaar voor editor/memory-agent taken
 
 </details>
 
-De coordinator instrueert welke subagent een taak uitvoert. Simpele taken gaan naar Tier 1/2 (editor/memory-agent), complexe taken naar Tier 3 (writer/researcher), onoplosbare taken naar Tier 4 (escalation-agent).
+Muddy instrueert welke subagent een taak uitvoert. Memory-taken gaan naar Tier 1 (memory-agent op Ollama), inhoudelijke taken naar Tier 3 (Elon/Dario/Gary/Warren op Sonnet), onoplosbare taken naar Tier 4 (escalation-agent).
 
 #### Laag 3 — Compaction (geconfigureerd ✅)
 
@@ -1996,50 +1996,21 @@ OpenClaw laadt alle identity files (SOUL.md, AGENTS.md, etc.) als systeem-prompt
 
 > Limieten verhoogd van 12.000/40.000 naar 20.000/80.000 na analyse — de defaults zijn 20.000/150.000. Subagents ontvangen alleen AGENTS.md en TOOLS.md, de coordinator krijgt alle bootstrap-bestanden.
 
-#### Laag 5 — Per-agent thinking budget (geconfigureerd ✅)
+#### Laag 5 — Per-agent thinking budget (via `/think` commando ✅)
 
 Elke agent heeft een eigen denkniveau. Hogere thinking levels genereren meer interne redeneerTokens vóór het antwoord — beter voor complexe taken, maar duurder. Door het niveau af te stemmen op de rol van de agent bespaar je tokens zonder kwaliteitsverlies.
-
-```json
-"agents": {
-  "defaults": {
-    "thinkingDefault": "medium"
-  },
-  "list": [
-    {
-      "id": "muddy",
-      "params": { "thinking": "low" }
-    }
-  ]
-}
-```
-
-| Agent | Thinking level | Reden |
-|-------|---------------|-------|
-| `muddy` (coordinator) | `low` | Routeert en delegeert — diep redeneren is niet nodig |
-| `elon`, `gary`, `warren` | `medium` (via defaults) | Inhoudelijke taken profiteren van uitgebreid redeneren |
-| `memory-agent` | — | Ollama ondersteunt geen thinking |
 
 **Geldige waarden:** `minimal` · `low` · `medium` · `high` · `xhigh` · `adaptive`
 
 `adaptive` laat het model zelf beslissen (standaard voor Claude 4.6 zonder expliciete config). `medium` is een goede balans tussen kwaliteit en kosten voor de meeste taken.
 
-> **Let op:** `thinkingDefault` werkt alleen op `agents.defaults` niveau. Per-agent override werkt via `params.thinking` in `agents.list`. Proberen `thinkingDefault` op agent-lijst-niveau te zetten geeft "Unrecognized key" in de gateway log.
+| Agent | Thinking level | Reden |
+|-------|---------------|-------|
+| `muddy` (coordinator) | `low` | Routeert en delegeert — diep redeneren is niet nodig |
+| `elon`, `dario`, `gary`, `warren` | `medium` | Inhoudelijke taken profiteren van uitgebreid redeneren |
+| `memory-agent` | — | Ollama ondersteunt geen thinking |
 
-#### Laag 6 — Minimal promptmodus voor subagents (beschikbaar, bewust niet geïmplementeerd)
-
-`promptMode: minimal` werkt in de huidige versie — de crashloop van v2026.3.14 is opgelost. Het verwijdert Skills, Memory Recall, Heartbeats, Messaging en Reply Tags uit de subagent system prompt.
-
-| Modus | Bevat | Gebruik |
-|---|---|---|
-| `full` (default) | Skills, Memory Recall, Heartbeats, Messaging, Reply Tags | Coordinator — heeft alles nodig |
-| `minimal` | Alleen taak-instructies en tools | Subagents — voeren één taak uit |
-
-**Waarom niet geïmplementeerd:** `minimal` verwijdert de Skills-sectie waardoor subagents niet weten welke skills beschikbaar zijn en ze nooit laden. Dit blokkeert toekomstige uitbreiding van `writer`, `researcher` en `editor` met agent-specifieke skills. De `memory-agent` (enige kandidaat zonder skills) draait op Ollama — token-besparing is daar irrelevant.
-
-**Heroverwegen als:** skills per subagent zijn uitgewerkt en duidelijk is welke agents nooit skills nodig hebben. Geschatte besparing: 20–40% minder tokens per subagent-aanroep.
-
-> Zie [issue #2](https://github.com/nouwnow/openclaw-sandbox/issues/2) voor de volledige afweging.
+> **Waarschuwing:** `thinkingDefault` als statische waarde in `openclaw.json` (zowel op `agents.defaults` als per-agent niveau) veroorzaakt een gateway crashloop. Thinking modes instellen via het `/think` commando in een actieve sessie, niet via config.
 
 #### Laag 6 — Dedicated agents per domein ✅
 
@@ -2061,7 +2032,7 @@ Elke agent heeft een eigen denkniveau. Hogere thinking levels genereren meer int
 
 Elke agent heeft zijn eigen `workspace-{id}/AGENTS.md` met alleen de instructies die relevant zijn voor zijn rol. Context overhead per agent is ~56% kleiner dan de monolithische situatie (Elon had 11 skills, nu 6 gefocuste). Zie [PRD-v9-context-optimalisatie.md](PRD-v9-context-optimalisatie.md) voor de volledige token-reductieanalyse.
 
-#### Laag 9 — Lobster pipelines voor terugkerende analyses ✅
+#### Laag 7 — Lobster pipelines voor terugkerende analyses ✅
 
 De grootste contextreductie per run zit niet in het verkleinen van de systeem-prompt, maar in het **verplaatsen van werk uit de agent-context naar deterministisch uitgevoerde pipeline-stappen**:
 
@@ -2077,7 +2048,7 @@ Zie [Deterministic Lobster Pipelines](#deterministic-lobster-pipelines) voor de 
 
 ---
 
-#### Laag 7 — Heartbeat model & interval (geconfigureerd ✅)
+#### Laag 8 — Heartbeat model & interval (geconfigureerd ✅)
 
 Heartbeats draaien nu op Haiku in plaats van Sonnet — 4× goedkoper per heartbeat-trigger.
 
@@ -2099,7 +2070,7 @@ Heartbeats draaien nu op Haiku in plaats van Sonnet — 4× goedkoper per heartb
 
 > Let op: de parameter heet `every` (string, bijv. `"55m"`), niet `intervalMinutes`.
 
-#### Laag 8 — Cron frequentie (geconfigureerd ✅)
+#### Laag 9 — Cron frequentie (geconfigureerd ✅)
 
 Elke cron trigger start een nieuwe sessie met volledige context-injectie. Hoge frequentie = directe kostenvermeerdering.
 
@@ -2115,7 +2086,7 @@ De `elk-uur-statuscheck` en `dagelijkse-briefing` waren al op verstandige interv
 
 | Oplossing | Wat het doet | Status |
 |---|---|---|
-| **Ollama Tier 1** | Editor + memory-agent draaien lokaal op qwen3.5:9b — geen API-kosten | ✅ Geïmplementeerd |
+| **Ollama Tier 1** | Memory-agent draait lokaal op qwen3.5:9b — geen API-kosten voor memory-taken | ✅ Geïmplementeerd |
 | **Lobster pipelines** | Wekelijkse analyses buiten agent-context: ~600 vs. 15.000 tokens/run | ✅ Geïmplementeerd (15 pipelines) |
 | **Context-file splits** | AGENTS.md → core + reference, USER.md → core-only voor tech agents | ✅ Geïmplementeerd (Elon, Dario, Gary, Warren) |
 | **Dedicated Dario agent** | Audits + wiki op Sonnet, Elon focus op data sync — kleinere context per agent | ✅ Geïmplementeerd |
