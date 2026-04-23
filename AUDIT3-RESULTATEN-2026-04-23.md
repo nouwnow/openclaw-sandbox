@@ -430,9 +430,9 @@ print(json.dumps({'files': files, 'total': len(files)}))
 " | python3 .openclaw/workspace/scripts/openbrain-batch-ingest.py
 ```
 
-### Actie 2: Elon's sync-pipelines uitbreiden met OpenBrain store stap
+### ~~Actie 2: Elon's sync-pipelines uitbreiden~~ — vervalt
 
-De pipelines `matomo-weekly-sync.lobster`, `vikbooking-weekly-sync.lobster`, en `reviews-weekly-sync.lobster` missen een `store_openbrain` stap. Toevoegen maakt ook Elon's data historisch doorzoekbaar via OpenBrain. Implementatie via Dario (skill-building).
+Elon's sync-output (Matomo-cijfers, VikBooking-snapshots, review-scores) zijn pure meetdata zonder redenering. OpenBrain is uitsluitend voor agent-rapportages en conclusies na pipeline-runs. Meetdata hoort in de operationele SQLite-databases, niet in OpenBrain.
 
 ### Actie 3: AGENTS.md bijwerken per agent
 
@@ -461,8 +461,8 @@ Na implementatie: controleer bij elke wekelijkse tech-audit (Dario) of agents qm
 | Gary + Warren missen OpenBrain | Hoog | AGENTS.md bijwerken na batch-ingest |
 | Muddy mist beslisboom | Hoog | Beslisboom toevoegen aan AGENTS.md |
 | Geen routing in Elon's AGENTS.md | Laag | Minimale sectie toevoegen |
-| Elon's sync-logs niet in OpenBrain | Laag | store_openbrain stap in Elon-pipelines (Dario taak) |
-| Dubbel langetermijngeheugen (MEMORY.md vs OpenBrain) | Laag | Scope-afbakening toevoegen: MEMORY.md voor beleid/identiteit, OpenBrain voor rapporten |
+| Elon's sync-logs in OpenBrain | Laag | ✅ Vervalt — pure meetdata (Matomo/VikBooking-cijfers) hoort niet in OpenBrain; OpenBrain is uitsluitend voor agent-rapportages en conclusies na pipeline-runs |
+| ~~Dubbel langetermijngeheugen (MEMORY.md vs OpenBrain)~~ | ~~Laag~~ | ✅ Opgelost — expliciete scope-afbakening toegevoegd aan alle AGENTS.md's; taak-check ruis verwijderd uit Gary en Warren MEMORY.md |
 
 ---
 
