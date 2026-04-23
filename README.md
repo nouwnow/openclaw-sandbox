@@ -36,6 +36,7 @@
 - [Deterministic Lobster Pipelines](#deterministic-lobster-pipelines)
 - [Inter-Agent Communication](#inter-agent-communication)
 - [Hybride Memory & Multi-Project Orchestratie](#hybride-memory--multi-project-orchestratie)
+- [OpenBrain — Cloud Rapport Kennisbasis](#openbrain--cloud-rapport-kennisbasis)
 - [Mission Control Dashboard](#mission-control-dashboard)
 - [Data Layer & Script-Driven Skills](#data-layer--script-driven-skills)
 - [Configuration](#configuration)
@@ -1133,7 +1134,8 @@ We hebben vier complementaire memory-methoden geïmplementeerd die samen de stan
 | Methode | Type | Status | Waarde |
 |---|---|---|---|
 | **Folders** — `MEMORY.md` + `memory/YYYY-MM-DD.md` per agent | Markdown bestanden | ✅ Actief | Transparant, altijd beschikbaar bij sessie-start |
-| **Wiki-vault + qmd** — semantisch zoeken via `qmd__query` | 5 collections, 140 bestanden geïndexeerd | ✅ Actief | Agents zoeken zelf relevante context op — vervangt SQLite RAG |
+| **Wiki-vault + qmd** — semantisch zoeken via `qmd__query` | 5 collections, 178 bestanden geïndexeerd | ✅ Actief | Agents zoeken zelf relevante context op — lokaal, geen API key vereist |
+| **OpenBrain** — cloud pgvector via `search_reports` MCP | Supabase `agent_reports` tabel, 129 rapporten | ✅ Actief | Cross-agent semantisch zoeken in alle historische rapporten — dedup, embeddings, filter op agent/type/datum |
 | **Extractie-cron** — dagelijks 07:00 (Lobster pipeline) | Automatische samenvatting van sessie-logs + status-log rotatie | ✅ Actief | Geen handwerk — dagelijkse feiten worden automatisch opgeslagen |
 | **Facts DB** — SQLite (VikBooking, Matomo) | Gestructureerde opslag voor domeindata | ✅ Actief | Deterministisch — scripts lezen/schrijven, geen agents |
 
@@ -1220,6 +1222,65 @@ Orchestrator stuurt naar Project-A:
 ```
 
 Dit betekent dat een herstart van Project-A's gateway nooit invloed heeft op de orchestrator of Project-B.
+
+<sub>[↑ Back to top](#table-of-contents)</sub>
+
+---
+
+## OpenBrain — Cloud Rapport Kennisbasis
+
+Naast de lokale wiki-vault hebben agents toegang tot **OpenBrain** — een Supabase-hosted second brain met pgvector voor semantisch zoeken. De `openclaw-reports` MCP server koppelt de agents direct aan een `agent_reports` tabel waarop cosine-similarity zoekopdrachten draaien.
+
+### Waarom OpenBrain naast qmd?
+
+| | qmd (lokaal) | OpenBrain (cloud) |
+|---|---|---|
+| **Scope** | Lokale wiki-vault bestanden | Alle agent-rapporten, cross-agent |
+| **Zoeken** | BM25 + lokale embeddings | pgvector cosine similarity |
+| **Update** | Na elke archiving-pipeline | Automatisch via `store_openbrain` Lobster-stap |
+| **API key nodig** | Nee | Ja (`OPENBRAIN_KEY`) |
+| **Deduplicatie** | Nee | Ja — `wiki_path` unique constraint |
+
+### Wat zit er in OpenBrain?
+
+129 agent-rapporten (stand 2026-04-23), automatisch aangroeiend na elke pipeline-run:
+
+| Agent | Rapporten | Inhoud |
+|-------|-----------|--------|
+| Muddy | 63 | Daily executive syncs, conversie-analyses, OTA-strategie, planning |
+| Warren | 30 | Revenue strategie, booking analytics, review-revenue analyses |
+| Elon | 17 | Wiki-checks, data-syncs, Crux Core Web Vitals audits |
+| Gary | 14 | Content strategie, review strategie, booking insights |
+| Dario | 5 | Tech audits, wiki-ingest logs |
+
+### Architectuur
+
+```
+Lobster pipeline
+    │
+    ├── llm-wiki__vault_write  →  ~/wiki-vault/agents/<agent>/...  (lokaal)
+    └── store_openbrain        →  Supabase agent_reports tabel     (cloud)
+                                       │
+                                  pgvector embeddings (1536d)
+                                  openai/text-embedding-3-small via OpenRouter
+```
+
+Agents lezen via de `openclaw-reports` MCP server die als `streamable-http` transport is geconfigureerd in `openclaw.json`.
+
+### Tools
+
+```
+search_reports("warren revenue directe boekingen")   → semantisch zoeken
+list_reports(agent: "dario", type: "tech-audit")      → filteren op metadata
+get_report(wiki_path: "agents/warren/...")             → volledig rapport ophalen
+report_stats()                                         → verdeling per agent/type
+```
+
+### Schrijfregel
+
+Agents roepen `store_report` **nooit handmatig aan**. De Lobster-pipeline doet dit automatisch via de `store_openbrain` stap na elke pipeline-run. Agents schrijven naar de wiki-vault; de pipeline zorgt voor de OpenBrain-sync.
+
+Zie **[PRD-v11-implementatie-status.md](PRD-v11-implementatie-status.md)** voor het volledige implementatietraject en de Edge Function architectuur.
 
 <sub>[↑ Back to top](#table-of-contents)</sub>
 
