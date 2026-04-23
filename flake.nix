@@ -24,7 +24,7 @@
           # Openclaw is gemarkeerd als insecure (LLM-toegang tot systeem).
           # We draaien het bewust geïsoleerd in een MicroVM.
           nixpkgs.config.permittedInsecurePackages = [
-            "openclaw-2026.3.23"
+            "openclaw-2026.4.21"
           ];
           nixpkgs.overlays = [ nix-openclaw.overlays.default ];
 
@@ -87,6 +87,8 @@
               { source = hostWorkspace;                  mountPoint = "/home/agent/workspace"; tag = "openclaw-data"; proto = "virtiofs"; }
               { source = "${hostWorkspace}/.claude";     mountPoint = "/home/agent/.claude";   tag = "agent-claude";  proto = "virtiofs"; }
               { source = "${hostWorkspace}/.npm-global"; mountPoint = "/home/agent/.npm-global"; tag = "agent-npm";   proto = "virtiofs"; }
+              # ── Wiki-vault — gedeeld met hermes-sandbox ─────────
+              { source = "/home/michiel/wiki-vault";     mountPoint = "/home/agent/wiki";      tag = "wiki-vault";    proto = "virtiofs"; }
             ];
           };
 
@@ -120,12 +122,16 @@
           security.sudo.wheelNeedsPassword = false;
 
           environment.sessionVariables.NPM_CONFIG_PREFIX = "/home/agent/workspace/.npm-global";
+          environment.sessionVariables.QMD_DB_PATH      = "/home/agent/workspace/.qmd/index.sqlite";
           programs.bash.interactiveShellInit = ''
             export PATH="/home/agent/.npm-global/bin:$PATH"
           '';
 
           systemd.tmpfiles.rules = [
             "L+ /home/agent/.claude.json - - - - /home/agent/.claude/claude.json"
+            # Wiki-vault mountpunt + persistente qmd index-opslag
+            "d /home/agent/wiki                       0755 agent agent -"
+            "d /home/agent/workspace/.qmd             0755 agent agent -"
             # Openclaw state directories (virtiofs → persistent op host)
             "d /home/agent/workspace/.openclaw/logs                    0755 agent agent -"
             "d /home/agent/workspace/.openclaw/agents/main/agent       0755 agent agent -"
@@ -151,12 +157,21 @@
             createUser   = false;
             stateDir     = "/home/agent/workspace/.openclaw";
             port         = 18789;
+            # .env wordt door de module gegenereerd/overschreven.
+            # Gevoelige tokens (Discord) staan in .env.secrets — wordt nooit
+            # door de module aangeraakt.
             environmentFiles = [ "/home/agent/workspace/.env" ];
             restart      = "always";
             logPath      = "/tmp/openclaw-gateway.log";
-            # OPENCLAW_CONFIG_PATH in .env overschrijft dit — wijst naar workspace config
-            config.gateway.mode = "local";
           };
+
+          systemd.services.openclaw-gateway.serviceConfig.EnvironmentFile =
+            lib.mkAfter [ "/home/agent/workspace/.env.secrets" ];
+
+          # Config-pad direct in de systemd service environment — niet via .env,
+          # zodat de module dit niet kan overschrijven.
+          systemd.services.openclaw-gateway.environment.OPENCLAW_CONFIG_PATH =
+            lib.mkForce "/home/agent/workspace/.openclaw/openclaw.json";
 
           # ── Project-A gateway (poort 18790) ────────────────────
           # Tweede gateway voor project-isolatie. Eigen openclaw.json,
